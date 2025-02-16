@@ -1,0 +1,25 @@
+roma
+gradio
+matplotlib
+tqdm
+opencv-python
+scipy
+einops
+trimesh
+tensorboard
+pyglet<2
+huggingface-hub[torch]>=0.22
+pillow-heif  # add heif/heic image support
+pyrender  # for rendering depths in scannetpp
+kapture  # for visloc data loading
+kapture-localization
+numpy-quaternion
+pycolmap  # for pnp
+poselib  # for pnp
+git+https://github.com/nerfstudio-project/gsplat.git
+matplotlib
+scikit-image
+imageio
+pyrender=0.1.45
+git+https://github.com/facebookresearch/pytorch3d.git
+
