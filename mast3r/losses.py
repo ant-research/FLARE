@@ -10,12 +10,10 @@ from dust3r.utils.geometry import (geotrf, inv, normalize_pointcloud)
 from dust3r.inference import get_pred_pts3d
 from dust3r.utils.geometry import get_joint_pointcloud_depth, get_joint_pointcloud_center_scale
 import trimesh
-from dust3r.viz import add_scene_cam, CAM_COLORS, OPENGL, pts3d_to_trimesh, cat_meshes
 import os
 from pytorch3d.transforms.rotation_conversions import matrix_to_quaternion, quaternion_to_matrix
 import torch.nn.functional as F
 from PIL import Image
-
 
 class MeshOutput():
     def __init__(self,sam=False):

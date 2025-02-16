@@ -1,1 +1,0 @@
-from .gaussian_renderer import GaussianRenderer

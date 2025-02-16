@@ -1,9 +1,3 @@
-# Copyright (C) 2024-present Naver Corporation. All rights reserved.
-# Licensed under CC BY-NC-SA 4.0 (non-commercial use only).
-#
-# --------------------------------------------------------
-# MASt3R model class
-# --------------------------------------------------------
 import torch
 import copy
 import torch.nn as nn
@@ -20,62 +14,6 @@ inf = float('inf')
 from dust3r.patch_embed import get_patch_embed
 from torch.utils.checkpoint import checkpoint
 from pytorch3d.transforms.rotation_conversions import matrix_to_quaternion
-
-
-def build_rot_matrix_from_angle(A1, A2, A3):
-    """
-    A1: bs
-    A2: bs
-    A3: bs
-    """
-    A1 = A1 / 180. * torch.pi
-    A2 = A2 / 180. * torch.pi
-    A3 = A3 / 180. * torch.pi
-    inf = 1e4
-    device = A1.device
-    bs = A1.shape[0]
-
-    R1 = torch.tensor([[1, 0,     0],
-                       [0, inf, inf],
-                       [0, inf, inf]]).reshape(1, 3, 3).repeat(bs, 1, 1).to(device=device, dtype=A1.dtype)
-    R2 = torch.tensor([[inf, 0, inf],
-                       [0,   1,   0],
-                       [inf, 0, inf]]).reshape(1, 3, 3).repeat(bs, 1, 1).to(device=device, dtype=A1.dtype)
-    R3 = torch.tensor([[inf, inf, 0],
-                       [inf, inf, 0],
-                       [0,   0,   1]]).reshape(1, 3, 3).repeat(bs, 1, 1).to(device=device, dtype=A1.dtype)
-
-    cosA1 = torch.cos(A1)  # bs
-    sinA1 = torch.sin(A1)  # bs
-    R1[:, 1, 1] = cosA1
-    R1[:, 1, 2] = -sinA1
-    R1[:, 2, 1] = sinA1
-    R1[:, 2, 2] = cosA1
-    R1 = R1.contiguous()
-
-    cosA2 = torch.cos(A2)  # bs
-    sinA2 = torch.sin(A2)  # bs
-    R2[:, 0, 0] = cosA2
-    R2[:, 0, 2] = sinA2
-    R2[:, 2, 0] = -sinA2
-    R2[:, 2, 2] = cosA2
-    R2 = R2.contiguous()
-
-    cosA3 = torch.cos(A3)  # bs
-    sinA3 = torch.sin(A3)  # bs
-    R3[:, 0, 0] = cosA3
-    R3[:, 0, 1] = -sinA3
-    R3[:, 1, 0] = sinA3
-    R3[:, 1, 1] = cosA3
-    R3 = R3.contiguous()
-
-    R = R1 @ R2 @ R3
-
-    return R  # bs, 3, 3
-
-def modulate(x, shift, scale):
-    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-
 
 def load_model(model_path, device, verbose=True):
     if verbose:
@@ -96,88 +34,20 @@ def load_model(model_path, device, verbose=True):
     return net.to(device)
 import torch
 
-def depthmap_to_camera_coordinates(depthmap, camera_intrinsics):
-    """
-    Args:
-        - depthmap (HxW tensor): Depth map of the scene
-        - camera_intrinsics (3x3 tensor): Camera intrinsic matrix
-    Returns:
-        pointmap of absolute coordinates (HxWx3 tensor), and a mask specifying valid pixels.
-    """
-    # Convert camera intrinsics to float
-    camera_intrinsics = camera_intrinsics.float()
-    H, W = depthmap.shape[1:3]
-
-    fu = camera_intrinsics[:,0]
-    fv = camera_intrinsics[:,1]
-
-    cu = camera_intrinsics[:, 2]
-    cv = camera_intrinsics[:, 3]
-    # Generate meshgrid for pixel coordinates
-    u, v = torch.meshgrid(torch.arange(W), torch.arange(H), indexing='xy')
-    u = u.to(depthmap.device).float()[None, ...].repeat(depthmap.shape[0], 1, 1)
-    v = v.to(depthmap.device).float()[None, ...].repeat(depthmap.shape[0], 1, 1)
-
-    # Compute camera coordinates
-    z_cam = depthmap.squeeze()
-    x_cam = (u - cu[:,None, None]) * z_cam / fu[:,None, None]
-    y_cam = (v - cv[:,None, None]) * z_cam / fv[:,None, None]
-    X_cam = torch.stack((x_cam, y_cam, z_cam), dim=-1).float()
-
-    # Mask for valid coordinates
-
-    return X_cam
-
-def depthmap_to_absolute_camera_coordinates(depthmap, camera_intrinsics, camera_pose):
-    """
-    Args:
-        - depthmap (HxW tensor): Depth map of the scene
-        - camera_intrinsics (3x3 tensor): Camera intrinsic matrix
-        - camera_pose (4x3 or 4x4 tensor): Camera-to-world transformation matrix
-    Returns:
-        pointmap of absolute coordinates (HxWx3 tensor), and a mask specifying valid pixels.
-    """
-    # Get camera coordinates
-    X_cam = depthmap_to_camera_coordinates(depthmap, camera_intrinsics)
-
-    # Default to camera coordinates if no pose is provided
-    X_world = X_cam
-    if camera_pose is not None:
-        R_cam2world = camera_pose[:,:3, :3]
-        t_cam2world = camera_pose[:,:3, 3]
-        # Express in absolute coordinates (invalid depth values)
-        X_world = torch.einsum("bik,bvuk->bvui", R_cam2world, X_cam) + t_cam2world[:, None, None, :]
-
-    return X_world
-
-def unproject_depth(depth_map, fxfycxcy, c2ws, true_shape):
-    # undebug
-    xyz_world = depthmap_to_absolute_camera_coordinates(depth_map, fxfycxcy, c2ws)
-    return xyz_world
-
-
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
 class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
-    def __init__(self, test_dtu=False, debug_index=True, wo_cascade_pose=False, only_pose_coarse=False, add_pose_head=False, use_norm_res=False, sh=True, wogs=True, low_res=True, ft32=False, inject_lowtoken = False, only_pose=False, desc_mode=('norm'), two_confs=False, desc_conf_mode=None, **kwargs):
-        self.add_pose_head = add_pose_head
+    def __init__(self, debug_index=True, wo_cascade_pose=False,  use_norm_res=False,  wogs=True, inject_lowtoken = False, only_pose=False, desc_mode=('norm'), two_confs=False, desc_conf_mode=None, **kwargs):
         self.desc_mode = desc_mode
         self.two_confs = two_confs
         self.desc_conf_mode = desc_conf_mode
-        self.low_res = low_res
         self.wo_cascade_pose = wo_cascade_pose
-        if self.wo_cascade_pose == True:
-            self.low_res = False
         self.wogs = wogs
-        self.ft32 = ft32
-        self.sh = sh 
         self.only_pose = only_pose
-        self.only_pose_coarse=only_pose_coarse
         self.inject_lowtoken = inject_lowtoken
         self.use_norm_res = use_norm_res
         self.debug_index = debug_index
-        self.test_dtu = test_dtu
         super().__init__(**kwargs)
         self.dec_blocks_point = copy.deepcopy(self.dec_blocks_fine)
         self.cam_cond_encoder_fine = copy.deepcopy(self.cam_cond_encoder)
@@ -190,7 +60,6 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         for block in self.adaLN_modulation:
             nn.init.constant_(block[-1].weight, 0)
             nn.init.constant_(block[-1].bias, 0)
-        # self.cam_cond_embed_fine = copy.deepcopy(self.cam_cond_embed)
         self.decoder_embed_fine = copy.deepcopy(self.decoder_embed)
         self.decoder_embed_point = copy.deepcopy(self.decoder_embed)
         self.enc_norm_coarse = copy.deepcopy(self.enc_norm)
@@ -348,33 +217,28 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
                     interm_features[i] = interm_features[i].reshape(B, views, *out.shape[1:])
             true_shape = shapes
 
-        if self.low_res:
-            W //= 64
-            H //= 64
-            n_tokens = H * W
-            x_coarse = out.new_zeros((B*views, n_tokens, self.patch_embed_coarse2.embed_dim)).to(dtype)
-            pos_coarse = out.new_zeros((B*views, n_tokens, 2), dtype=torch.int64)
-            height, width = true_shape.T
-            is_landscape = (width >= height)
-            is_portrait = ~is_landscape
-            fine_token = out.view(B*views, H * 4, W * 4, -1).permute(0, 3, 1, 2)
-            x_coarse[is_landscape] = self.patch_embed_coarse2.proj(fine_token[is_landscape]).permute(0, 2, 3, 1).flatten(1, 2)
-            x_coarse[is_portrait] = self.patch_embed_coarse2.proj(fine_token[is_portrait].swapaxes(-1, -2)).permute(0, 2, 3, 1).flatten(1, 2)
-            pos_coarse[is_landscape] = self.patch_embed_test_.position_getter(1, H, W, pos.device)
-            pos_coarse[is_portrait] = self.patch_embed_test_.position_getter(1, W, H, pos.device)
-            x_coarse = self.enc_norm_coarse(x_coarse)
-            out_coarse = x_coarse.reshape(B, views, *x_coarse.shape[1:]).to(dtype)
-            pos_coarse = pos_coarse.reshape(B, views, *pos_coarse.shape[1:])
-            shapes_coarse = shapes.reshape(B, views, *shapes.shape[1:]) // 4
-            out = out.reshape(B, views, *out.shape[1:])
-            pos = pos.reshape(B, views, *pos.shape[1:])
-            shapes = shapes.reshape(B, views, *shapes.shape[1:])
-            return shapes_coarse, out_coarse, pos_coarse, shapes, out, pos, interm_features
-        else:
-            out = out.reshape(B, views, *out.shape[1:])
-            pos = pos.reshape(B, views, *pos.shape[1:])
-            shapes = shapes.reshape(B, views, *shapes.shape[1:])
-            return shapes, out, pos, interm_features
+        W //= 64
+        H //= 64
+        n_tokens = H * W
+        x_coarse = out.new_zeros((B*views, n_tokens, self.patch_embed_coarse2.embed_dim)).to(dtype)
+        pos_coarse = out.new_zeros((B*views, n_tokens, 2), dtype=torch.int64)
+        height, width = true_shape.T
+        is_landscape = (width >= height)
+        is_portrait = ~is_landscape
+        fine_token = out.view(B*views, H * 4, W * 4, -1).permute(0, 3, 1, 2)
+        x_coarse[is_landscape] = self.patch_embed_coarse2.proj(fine_token[is_landscape]).permute(0, 2, 3, 1).flatten(1, 2)
+        x_coarse[is_portrait] = self.patch_embed_coarse2.proj(fine_token[is_portrait].swapaxes(-1, -2)).permute(0, 2, 3, 1).flatten(1, 2)
+        pos_coarse[is_landscape] = self.patch_embed_test_.position_getter(1, H, W, pos.device)
+        pos_coarse[is_portrait] = self.patch_embed_test_.position_getter(1, W, H, pos.device)
+        x_coarse = self.enc_norm_coarse(x_coarse)
+        out_coarse = x_coarse.reshape(B, views, *x_coarse.shape[1:]).to(dtype)
+        pos_coarse = pos_coarse.reshape(B, views, *pos_coarse.shape[1:])
+        shapes_coarse = shapes.reshape(B, views, *shapes.shape[1:]) // 4
+        out = out.reshape(B, views, *out.shape[1:])
+        pos = pos.reshape(B, views, *pos.shape[1:])
+        shapes = shapes.reshape(B, views, *shapes.shape[1:])
+        return shapes_coarse, out_coarse, pos_coarse, shapes, out, pos, interm_features
+        
 
     
     def _set_patch_embed(self, img_size=224, patch_size=16, enc_embed_dim=768):
@@ -401,24 +265,9 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         self.head1 = transpose_to_landscape(self.downstream_head1, activate=landscape_only)
         self.head2 = transpose_to_landscape(self.downstream_head2, activate=landscape_only)
         self.pose_head = CameraPredictor_clean(hood_idx=self.downstream_head2.dpt.hooks, trunk_depth=4, rope=self.rope)
-        if self.add_pose_head:
-            self.pose_head_stage2_pose_head = CameraPredictor_clean(hood_idx=self.downstream_head2.dpt.hooks, trunk_depth=4, rope=self.rope)
-        else:
-            self.pose_head_stage2 = CameraPredictor_clean(hood_idx=self.downstream_head2.dpt.hooks, trunk_depth=4, rope=self.rope)
-            
-        # if self.wogs == False:
-        #     self.downstream_head3 = mast3r_head_factory(head_type, 'depth_conf_scaling', self, has_conf=bool(conf_mode))
-        #     self.head3 = transpose_to_landscape(self.downstream_head3, activate=landscape_only)
-        if self.sh:
-            self.downstream_head4 = mast3r_head_factory('sh', output_mode, self, has_conf=bool(conf_mode))
-        else:
-            self.downstream_head4 = mast3r_head_factory('gs', output_mode, self, has_conf=bool(conf_mode))
+        self.pose_head_stage2 = CameraPredictor_clean(hood_idx=self.downstream_head2.dpt.hooks, trunk_depth=4, rope=self.rope)
+        self.downstream_head4 = mast3r_head_factory('sh', output_mode, self, has_conf=bool(conf_mode))
         self.head4 = transpose_to_landscape(self.downstream_head4, activate=landscape_only)
-        # self.downstream_head3 = mast3r_head_factory(head_type, output_mode, self, has_conf=bool(conf_mode))
-        # self.downstream_head4 = mast3r_head_factory(head_type, output_mode, self, has_conf=bool(conf_mode))
-        # # magic wrapper
-        # self.head3 = transpose_to_landscape(self.downstream_head1, activate=landscape_only)
-        # self.head4 = transpose_to_landscape(self.downstream_head2, activate=landscape_only)
         
     def _encode_image_fine(self, imgs_vgg, true_shape, dtype):
         # imgs_vgg = torch.cat((imgs_vgg, camera_feature.reshape(-1, 6, *imgs_vgg.shape[-2:])), 1)
@@ -827,34 +676,22 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         # dec_fine_stage2_grm = self._decoder_stage3(dec_fine, pos1, pos2, camera_embed1_gt, camera_embed2_gt, interm_features, feat_stage, fxfycxcy_unorm1, fxfycxcy_unorm2)
         with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
             res2 = self._downstream_head(2, [tok.float().reshape(-1, tok.shape[-2], tok.shape[-1]) for tok in dec_fine_stage2], shape.reshape(-1, 2))
-            # res2_grm = self._downstream_head(3, [tok.float().reshape(-1, tok.shape[-2], tok.shape[-1]) for tok in dec_fine_stage2_grm], shape.reshape(-1, 2))
-        # torch.cuda.empty_cache()
+        
         for key in res2.keys():
             res2[key] = res2[key].unflatten(0, (batch_size, view_num+1))
-        if self.test_dtu==False:
-            desc2 = torch.cat((res2['desc'].to(dtype), feat_vgg_detail), -1)
-            # gs1 = self.head5([desc1], shape1.reshape(-1,2))
-            gs2 = self.head4([desc2.flatten(0,1)], shape.reshape(-1,2))
-            # res1.update(gs1)
-            for key in gs2.keys():
-                gs2[key] = gs2[key].unflatten(0, (batch_size, view_num+1))
-            res2.update(gs2)
-            res2_new = {}
-            # for key in res2.keys():
-            #     # if key == 'feature':
-            #     #     import ipdb; ipdb.set_trace()
-            #     res1[key] = res2[key][:,:1].flatten(0,1)
-            #     res2_new[key] = res2[key][:,1:].flatten(0,1)
-            res1 = {}
-            for key in res2.keys():
-                res1[key] = res2[key][:,:1].flatten(0,1)
-                res2_new[key] = res2[key][:,1:].flatten(0,1)
-            res2 = res2_new
-            return res1, res2, pred_cameras
-        else:
-            res2.update({'feat_vgg_detail': feat_vgg_detail})
-            return None, res2, pred_cameras
-        
+        desc2 = torch.cat((res2['desc'].to(dtype), feat_vgg_detail), -1)
+        gs2 = self.head4([desc2.flatten(0,1)], shape.reshape(-1,2))
+        for key in gs2.keys():
+            gs2[key] = gs2[key].unflatten(0, (batch_size, view_num+1))
+        res2.update(gs2)
+        res2_new = {}
+        res1 = {}
+        for key in res2.keys():
+            res1[key] = res2[key][:,:1].flatten(0,1)
+            res2_new[key] = res2[key][:,1:].flatten(0,1)
+        res2 = res2_new
+        return res1, res2, pred_cameras
+
     def load_state_dict_posehead(self, ckpt, strict=True):
         # duplicate all weights for the second decoder if not present
         new_ckpt = {}
@@ -871,15 +708,7 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         batch_size, _, _, _  = view1[0]['img'].shape
         view_num = len(view2)
         if self.wo_cascade_pose==False:
-            if self.add_pose_head:
-                with torch.no_grad():
-                    feat1, pos1, feat2, pos2, pred_cameras_coarse, shape1, shape2, res1_stage1, res2_stage1, pose_token1, pose_token2, interm_features = self.forward_stage1(view1, view2, enabled=enabled, dtype=dtype)
-            else:
-                feat1, pos1, feat2, pos2, pred_cameras_coarse, shape1, shape2, res1_stage1, res2_stage1, pose_token1, pose_token2, interm_features = self.forward_stage1(view1, view2, enabled=enabled, dtype=dtype)
-            if self.only_pose_coarse:
-                res1 = None
-                res2 = None
-                return res1, res2, pred_cameras_coarse
+            feat1, pos1, feat2, pos2, pred_cameras_coarse, shape1, shape2, res1_stage1, res2_stage1, pose_token1, pose_token2, interm_features = self.forward_stage1(view1, view2, enabled=enabled, dtype=dtype)
             with torch.no_grad():
                 trans = pred_cameras_coarse[-1]['T'].float().detach().clone()
                 trans = trans.reshape(batch_size, -1, 3)
@@ -935,93 +764,59 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
                 interm_features[i] = interm_features[i].to(dtype)
         
         dec_fine, (pose_token1_fine, pose_token2_fine) = self._decoder_stage2(feat1, pos1, feat2, pos2, camera_embed1, camera_embed2, interm_features)
-        if self.add_pose_head:
-            (pose_token1_fine, pose_token2_fine) = self._decoder_stage2_head(dec_fine, pos1, pos2, camera_embed1, camera_embed2, pose_token1_fine, pose_token2_fine)
         shape = torch.cat((shape1, shape2), 1)
-        if self.only_pose:
-            if self.add_pose_head:
-                pred_cameras, _ = self.pose_head_stage2_pose_head(batch_size, interm_feature1=pose_token1_fine, interm_feature2=pose_token2_fine, enabled=True, dtype=dtype)
+        res1 = self._downstream_head(1, [tok.to(dtype).reshape(-1, tok.shape[-2], tok.shape[-1]) for tok in dec_fine], shape.reshape(-1, 2))
+        res1.pop('desc')
+        for key in res1.keys():
+            res1[key] = res1[key].unflatten(0, (batch_size, view_num+1)).float()
+        with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
+            pred_cameras, _ = self.pose_head_stage2(batch_size, interm_feature1=pose_token1_fine, interm_feature2=pose_token2_fine, enabled=True, dtype=torch.float32)
+
+        with torch.no_grad():
+            trans = pred_cameras[-1]['T'].float().detach().clone()
+            trans = trans.reshape(batch_size, -1, 3)
+            size =  (trans.norm(dim=-1, keepdim=True).mean(dim=-2, keepdim=True) + 1e-8)
+            trans_pred = trans / size
+            quaternion_R_pred = pred_cameras[-1]['quaternion_R'].reshape(batch_size, -1, 4).float().detach().clone()
+            # c2ws = [view['camera_pose'] for view in view1 + view2]
+            # c2ws = torch.stack(c2ws, dim=1).clone()
+            # real_pose = torch.einsum('bnjk,bnkl->bnjl', c2ws[:,:1].repeat(1,c2ws.shape[1], 1, 1).inverse(), c2ws)
+            # trans_gt = real_pose[..., :3, 3]
+            # size =  (trans_gt.norm(dim=-1, keepdim=True).mean(dim=-2, keepdim=True) + 1e-5)
+            # trans_pred = trans_gt / size
+            # quaternion_R_pred = matrix_to_quaternion(real_pose[...,:3,:3])
+            if self.training:
+                trans_pred_noise = trans_pred + torch.randn_like(trans_pred).to(trans_pred) * 0.05
+                noise_rot_level = 15
+                num_views = trans_pred.shape[1]
+                device = trans_pred.device
+                noise_rot = build_rot_matrix_from_angle(torch.rand(batch_size*num_views).to(device) * noise_rot_level - noise_rot_level/2, torch.rand(batch_size*num_views).to(device) * noise_rot_level - noise_rot_level/2, torch.rand(batch_size*num_views).to(device) * noise_rot_level - noise_rot_level/2)
+                R_pred = pred_cameras[-1]['R'].reshape(batch_size, -1, 3, 3).float().detach().clone()
+                R_pred[:,1:,:3,:3] = torch.einsum('bnjk,bnkl->bnjl', noise_rot.reshape(batch_size,num_views,3,3)[:,1:,:3,:3], R_pred[:,1:,:3,:3])
+                quaternion_R_noise = matrix_to_quaternion(R_pred[...,:3,:3])
+
+                prob_true = 0.6
+                distribution = torch.bernoulli(torch.full((batch_size, num_views), prob_true)).to(quaternion_R_pred) > 0.5
+                quaternion_R_noise = torch.where(distribution[...,None], quaternion_R_noise, quaternion_R_pred)
+                trans_noise = torch.where(distribution[...,None], trans_pred_noise, trans_pred)
             else:
-                pred_cameras, _ = self.pose_head_stage2(batch_size, interm_feature1=pose_token1_fine, interm_feature2=pose_token2_fine, enabled=True, dtype=dtype)
+                quaternion_R_noise = quaternion_R_pred
+                trans_noise = trans_pred
+            camera_embed = torch.cat((quaternion_R_noise, trans_noise), -1)
+            # camera_embed = torch.cat((quaternion_R_pred,  trans_pred), -1)
+            camera_embed1 = camera_embed[:, :1]
+            camera_embed2 = camera_embed[:, 1:]
+        if self.wo_cascade_pose==False:
             pred_cameras = pred_cameras_coarse + pred_cameras
-            res1 = None
-            res2 = None
-            return res1, res2, pred_cameras
         else:
-            res1 = self._downstream_head(1, [tok.to(dtype).reshape(-1, tok.shape[-2], tok.shape[-1]) for tok in dec_fine], shape.reshape(-1, 2))
-            res1.pop('desc')
-            for key in res1.keys():
-                res1[key] = res1[key].unflatten(0, (batch_size, view_num+1)).float()
-            if self.ft32:
-                with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
-                    pred_cameras, _ = self.pose_head_stage2(batch_size, interm_feature1=pose_token1_fine, interm_feature2=pose_token2_fine, enabled=True, dtype=torch.float32)
-            else:
-                pred_cameras, _ = self.pose_head_stage2(batch_size, interm_feature1=pose_token1_fine, interm_feature2=pose_token2_fine, enabled=True, dtype=dtype)
-
-            with torch.no_grad():
-                trans = pred_cameras[-1]['T'].float().detach().clone()
-                trans = trans.reshape(batch_size, -1, 3)
-                size =  (trans.norm(dim=-1, keepdim=True).mean(dim=-2, keepdim=True) + 1e-8)
-                trans_pred = trans / size
-                quaternion_R_pred = pred_cameras[-1]['quaternion_R'].reshape(batch_size, -1, 4).float().detach().clone()
-                # c2ws = [view['camera_pose'] for view in view1 + view2]
-                # c2ws = torch.stack(c2ws, dim=1).clone()
-                # real_pose = torch.einsum('bnjk,bnkl->bnjl', c2ws[:,:1].repeat(1,c2ws.shape[1], 1, 1).inverse(), c2ws)
-                # trans_gt = real_pose[..., :3, 3]
-                # size =  (trans_gt.norm(dim=-1, keepdim=True).mean(dim=-2, keepdim=True) + 1e-5)
-                # trans_pred = trans_gt / size
-                # quaternion_R_pred = matrix_to_quaternion(real_pose[...,:3,:3])
-                if self.training:
-                    trans_pred_noise = trans_pred + torch.randn_like(trans_pred).to(trans_pred) * 0.05
-                    noise_rot_level = 15
-                    num_views = trans_pred.shape[1]
-                    device = trans_pred.device
-                    noise_rot = build_rot_matrix_from_angle(torch.rand(batch_size*num_views).to(device) * noise_rot_level - noise_rot_level/2, torch.rand(batch_size*num_views).to(device) * noise_rot_level - noise_rot_level/2, torch.rand(batch_size*num_views).to(device) * noise_rot_level - noise_rot_level/2)
-                    R_pred = pred_cameras[-1]['R'].reshape(batch_size, -1, 3, 3).float().detach().clone()
-                    R_pred[:,1:,:3,:3] = torch.einsum('bnjk,bnkl->bnjl', noise_rot.reshape(batch_size,num_views,3,3)[:,1:,:3,:3], R_pred[:,1:,:3,:3])
-                    quaternion_R_noise = matrix_to_quaternion(R_pred[...,:3,:3])
-
-                    prob_true = 0.6
-                    distribution = torch.bernoulli(torch.full((batch_size, num_views), prob_true)).to(quaternion_R_pred) > 0.5
-                    quaternion_R_noise = torch.where(distribution[...,None], quaternion_R_noise, quaternion_R_pred)
-                    trans_noise = torch.where(distribution[...,None], trans_pred_noise, trans_pred)
-                else:
-                    quaternion_R_noise = quaternion_R_pred
-                    trans_noise = trans_pred
-                camera_embed = torch.cat((quaternion_R_noise, trans_noise), -1)
-                # camera_embed = torch.cat((quaternion_R_pred,  trans_pred), -1)
-                camera_embed1 = camera_embed[:, :1]
-                camera_embed2 = camera_embed[:, 1:]
-            if self.wo_cascade_pose==False:
-                pred_cameras = pred_cameras_coarse + pred_cameras
-            else:
-                pred_cameras = pred_cameras
-                
-            if self.test_dtu:
-                c2ws = [view['camera_pose'] for view in view1 + view2]
-                c2ws = torch.stack(c2ws, dim=1).clone()
-                real_pose = torch.einsum('bnjk,bnkl->bnjl', c2ws[:,:1].repeat(1,c2ws.shape[1], 1, 1).inverse(), c2ws)
-                trans_gt = real_pose[..., :3, 3]
-                size =  (trans_gt.norm(dim=-1, keepdim=True).mean(dim=-2, keepdim=True) + 1e-5)
-                trans_gt = trans_gt / size
-                real_pose_norm = real_pose.clone()
-                real_pose_norm[...,:3,3] = trans_gt
-                quaternion_R_gt = matrix_to_quaternion(real_pose[...,:3,:3])
-                camera_embed_gt = torch.cat((quaternion_R_gt, trans_gt), -1)
-                camera_embed1_gt = camera_embed_gt[:, :1]
-                camera_embed2_gt = camera_embed_gt[:, 1:]
-                camera_embed1 = camera_embed1_gt
-                camera_embed2 = camera_embed2_gt
-                
-            dec_fine_stage2 = self._decoder_stage3(dec_fine, pos1, pos2, camera_embed1, camera_embed2, interm_features)
-            if self.ft32:
-                with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
-                    res2 = self._downstream_head(2, [tok.float().reshape(-1, tok.shape[-2], tok.shape[-1]) for tok in dec_fine_stage2], shape.reshape(-1, 2))
-            else:
-                res2 = self._downstream_head(2, [tok.to(torch.bfloat16).reshape(-1, tok.shape[-2], tok.shape[-1]) for tok in dec_fine_stage2], shape.reshape(-1, 2))
-            res2.pop('desc')
-            # torch.cuda.empty_cache()
-            for key in res2.keys():
-                res2[key] = res2[key].unflatten(0, (batch_size, view_num+1)).float()
-            return res1, res2, pred_cameras
+            pred_cameras = pred_cameras
             
+        dec_fine_stage2 = self._decoder_stage3(dec_fine, pos1, pos2, camera_embed1, camera_embed2, interm_features)
+        with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
+            res2 = self._downstream_head(2, [tok.float().reshape(-1, tok.shape[-2], tok.shape[-1]) for tok in dec_fine_stage2], shape.reshape(-1, 2))
+        res2.pop('desc')
+        # torch.cuda.empty_cache()
+        for key in res2.keys():
+            res2[key] = res2[key].unflatten(0, (batch_size, view_num+1)).float()
+        return res1, res2, pred_cameras
+        

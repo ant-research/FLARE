@@ -12,38 +12,22 @@ import numpy as np
 import random
 import mast3r.utils.path_to_dust3r  # noqa
 # check the presence of models directory in repo to be sure its cloned
-from dust3r.datasets.base.base_stereo_view_dataset import BaseStereoViewDataset, BaseStereoViewDataset_test
-from dust3r.utils.image import imread_cv2, imread_cv2_orig
+from dust3r.datasets.base.base_stereo_view_dataset import BaseStereoViewDataset_test
 from collections import deque
 import os
 import json
 import time
 import glob
-import tqdm
-try:
-    from pcache_fileio import fileio
-    flag_pcache = True
-except:
-    flag_pcache = False
-from enum import Enum, auto
 from pathlib import Path
 
-oss_folder_path = 'oss://antsys-vilab/datasets/pcache_datasets/'
-# oss_file_path = 'oss://antsys-vilab/datasets/pcache_datasets/SAM_1B/sa_000000/images/sa_1011.jpg'
-pcache_folder_path = 'pcache://vilabpcacheproxyi-pool.cz50c.alipay.com:39999/mnt/antsys-vilab_datasets_pcache_datasets/'
-# pcache_file_path = oss_file_path.replace(oss_folder_path,pcache_folder_path)
-
-class ETH3D(BaseStereoViewDataset_test):
-    def __init__(self, *args, split, ROOT, meta, only_pose=False, **kwargs):
+class CustomDataset(BaseStereoViewDataset_test):
+    def __init__(self, *args, split, ROOT, only_pose=False, sequential_input=False, index_list=None, **kwargs):
         self.ROOT = ROOT
-        self.index = 0
-        with open(meta, 'rb') as f:
-            self.meta = json.load(f)    
-        self.scenes = list(self.meta.keys())
+        self.sequential_input = sequential_input
         super().__init__(*args, **kwargs)
 
     def __len__(self):
-        return len(self.scenes)
+        return 684000
     
     @staticmethod
     def image_read(image_file):
@@ -52,22 +36,18 @@ class ETH3D(BaseStereoViewDataset_test):
 
   
     def _get_views(self, idx, resolution, rng):
-        scene = self.scenes[self.index]
-        images_list = self.meta[scene]['images']
-        intrinsics_org = np.array(self.meta[scene]['intrinsics'])
-        depth_maps = self.meta[scene]['depths']
-        camera_poses = np.array(self.meta[scene]['poses'])
+        images_list = glob.glob(osp.join(self.ROOT, '*.png')) + glob.glob(osp.join(self.ROOT, '*.jpg')) + glob.glob(osp.join(self.ROOT, '*.JPG'))
+        images_list = sorted(images_list)
+        images_list = random.sample(images_list, self.num_image + self.gt_num_image)
         views = []
-        for image, depthmap, camera_pose in zip(images_list, depth_maps, camera_poses):
+        for image in images_list:
             rgb_image = self.image_read(image)
             H, W = rgb_image.shape[:2]
-            # intrinsics = np.array([[W, 0, W/2], [0, H, H/2], [0, 0, 1]])
-            depthmap_mask = np.load(depthmap.split('.npy')[0] + '_valid.npy')
-            depthmap = 1/np.load(depthmap) 
-            depthmap[~depthmap_mask] = 0
-            camera_pose = np.linalg.inv(camera_pose)
+            intrinsics = np.array([[W, 0, W/2], [0, H, H/2], [0, 0, 1]])
+            camera_pose = np.eye(4)
+            depthmap = np.zeros((H, W))
             rgb_image, depthmap, intrinsics = self._crop_resize_if_necessary(
-                rgb_image, depthmap, intrinsics_org, resolution, rng=rng, info=None)
+                rgb_image, depthmap, intrinsics, resolution, rng=rng, info=None)
             rgb_image_orig = rgb_image.copy()
             H, W = depthmap.shape[:2]
             fxfycxcy = np.array([intrinsics[0, 0]/W, intrinsics[1, 1]/H, intrinsics[0,2]/W, intrinsics[1,2]/H]).astype(np.float32)
@@ -78,11 +58,10 @@ class ETH3D(BaseStereoViewDataset_test):
                 camera_pose=camera_pose.astype(np.float32),
                 camera_intrinsics=intrinsics.astype(np.float32),
                 fxfycxcy=fxfycxcy,
-                dataset='own',
-                label=scene,
-                instance=scene,
+                dataset='custom',
+                label=image,
+                instance=image,
             ))
-        self.index += 1
         return views
 
 
@@ -91,7 +70,6 @@ if __name__ == "__main__":
     from dust3r.viz import SceneViz, auto_cam_size
     from dust3r.utils.image import rgb
     import nerfvis.scene as scene_vis 
-    dataset = ETH3D(split='train', ROOT="/nas3/zsz/ETH3D_results/",meta='/nas3/zsz/DPSNet/metas.json',resolution=[(512, 384)], aug_crop=16)
 
     for idx in np.random.permutation(len(dataset)):
         views = dataset[idx]
@@ -123,7 +101,7 @@ if __name__ == "__main__":
         scene_vis.set_title("My Scene")
         scene_vis.set_opencv() 
         # colors = torch.zeros_like(structure).to(structure)
-        scene_vis.add_points("points", pts3ds.reshape(-1,3)[valid_masks.reshape(-1)], vert_color=colors.reshape(-1,3)[valid_masks.reshape(-1)], point_size=1)
+        # scene_vis.add_points("points", pts3ds.reshape(-1,3)[valid_masks.reshape(-1)], vert_color=colors.reshape(-1,3)[valid_masks.reshape(-1)], point_size=1)
         # for i in range(len(c2ws)):
         f = 1111.0 / 2.5
         z = 10.

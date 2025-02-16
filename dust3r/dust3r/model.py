@@ -14,59 +14,13 @@ import torchvision.models as tvm
 from .utils.misc import fill_default_args, freeze_all_params, is_symmetrized, interleave, transpose_to_landscape
 from .heads import head_factory
 from dust3r.patch_embed import get_patch_embed
-
 import dust3r.utils.path_to_croco  # noqa: F401
-from models.croco_self_old import CroCoNet  # noqa
+from models.croco import CroCoNet  # noqa
 
 inf = float('inf')
 import torch.nn as nn
 import torch.nn.functional as F
 
-class ConvBnReLU(nn.Module):
-    def __init__(self, in_channels, out_channels,
-                 kernel_size=3, stride=1, pad=1):
-        super(ConvBnReLU, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels,
-                              kernel_size, stride=stride, padding=pad, bias=False)
-        self.relu = nn.ReLU(inplace=True)
-    def forward(self, x):
-        return self.relu(self.conv(x))
-    
-class FeatureNet(nn.Module):
-    def __init__(self, norm_act=nn.BatchNorm2d):
-        super(FeatureNet, self).__init__()
-        self.conv0 = nn.Sequential(
-                        ConvBnReLU(3, 8, 3, 1, 1),
-                        ConvBnReLU(8, 8, 3, 1, 1))
-        self.conv1 = nn.Sequential(
-                        ConvBnReLU(8, 16, 5, 2, 2),
-                        ConvBnReLU(16, 16, 3, 1, 1))
-        self.conv2 = nn.Sequential(
-                        ConvBnReLU(16, 32, 5, 2, 2),
-                        ConvBnReLU(32, 32, 3, 1, 1))
-
-        self.toplayer = nn.Conv2d(32, 32, 1)
-        self.lat1 = nn.Conv2d(16, 32, 1)
-        self.lat0 = nn.Conv2d(8, 32, 1)
-
-        self.smooth1 = nn.Conv2d(32, 32, 3, padding=1)
-        self.smooth0 = nn.Conv2d(32, 32, 3, padding=1)
-
-    def _upsample_add(self, x, y):
-        return F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True) + y
-
-    def forward(self, x):
-        conv0 = self.conv0(x)
-        conv1 = self.conv1(conv0)
-        conv2 = self.conv2(conv1)
-        feat2 = self.toplayer(conv2)
-        feat1 = self._upsample_add(feat2, self.lat1(conv1))
-        feat0 = self._upsample_add(feat1, self.lat0(conv0))
-        feat1 = self.smooth1(feat1)
-        feat0 = self.smooth0(feat0)
-        return feat2, feat1, feat0
-
-    
 hf_version_number = huggingface_hub.__version__
 assert version.parse(hf_version_number) >= version.parse("0.22.0"), "Outdated huggingface_hub version, please reinstall requirements.txt"
 
@@ -88,26 +42,6 @@ def load_model(model_path, device, verbose=True):
         print(s)
     return net.to(device)
 
-
-class VGG19(nn.Module):
-    def __init__(self, pretrained=False, amp = False, amp_dtype = torch.float16) -> None:
-        super().__init__()
-        self.layers = nn.ModuleList(tvm.vgg19_bn(pretrained=pretrained).features[:40])
-        self.amp = amp
-        self.amp_dtype = amp_dtype
-
-    def forward(self, x):
-        feats = {}
-        scale = 1
-        for layer in self.layers:
-            if isinstance(layer, nn.MaxPool2d):
-                feats[scale] = x[:, :64]
-                scale = scale*2
-                if scale > 4:
-                    break
-            x = layer(x)
-        return feats[1], feats[2], feats[4]
-    
 class AsymmetricCroCo3DStereo (
     CroCoNet,
     huggingface_hub.PyTorchModelHubMixin,

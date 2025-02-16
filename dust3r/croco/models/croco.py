@@ -13,10 +13,10 @@ import torch.nn as nn
 torch.backends.cuda.matmul.allow_tf32 = True # for gpu >= Ampere and pytorch >= 1.12
 from functools import partial
 
-from models.blocks import Block, DecoderBlock, PatchEmbed
+from models.blocks import Block, DecoderBlock, PatchEmbed, DecoderBlock_onlyself, DecoderBlock_onlycross
 from models.pos_embed import get_2d_sincos_pos_embed, RoPE2D 
 from models.masking import RandomMask
-
+from mast3r.modules import AttnBlock
 
 class CroCoNet(nn.Module):
 
@@ -69,8 +69,14 @@ class CroCoNet(nn.Module):
         self.enc_blocks = nn.ModuleList([
             Block(enc_embed_dim, enc_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer, rope=self.rope)
             for i in range(enc_depth)])
+        # self.enc_fine_blocks = nn.ModuleList([
+        #     Block(enc_embed_dim // 64, enc_num_heads//16, mlp_ratio, qkv_bias=True, norm_layer=norm_layer, rope=self.rope)
+        #     for i in range(enc_depth//4)])
         self.enc_norm = norm_layer(enc_embed_dim)
-        
+        self.enc_blocks_stage2 = nn.ModuleList([
+            Block(enc_embed_dim, enc_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer, rope=self.rope)
+            for i in range(enc_depth//6)])
+        self.enc_norm_stage2 = norm_layer(enc_embed_dim)  
         # masked tokens 
         self._set_mask_token(dec_embed_dim)
 
@@ -85,6 +91,7 @@ class CroCoNet(nn.Module):
 
     def _set_patch_embed(self, img_size=224, patch_size=16, enc_embed_dim=768):
         self.patch_embed = PatchEmbed(img_size, patch_size, 3, enc_embed_dim)
+
 
     def _set_mask_generator(self, num_patches, mask_ratio):
         self.mask_generator = RandomMask(num_patches, mask_ratio)
@@ -101,12 +108,25 @@ class CroCoNet(nn.Module):
         self.dec_blocks = nn.ModuleList([
             DecoderBlock(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, qkv_bias=True, norm_layer=norm_layer, norm_mem=norm_im2_in_dec, rope=self.rope)
             for i in range(dec_depth)])
+        self.dec_blocks_fine = nn.ModuleList([
+            DecoderBlock_onlyself(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, qkv_bias=True, norm_layer=norm_layer, norm_mem=norm_im2_in_dec, rope=self.rope)
+            for i in range(dec_depth)])
+        self.dec_blocks_point_cross = nn.ModuleList([
+            DecoderBlock_onlycross(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, qkv_bias=True, norm_layer=norm_layer, norm_mem=norm_im2_in_dec, rope=self.rope)
+            for i in range(dec_depth)])
         # final norm layer 
-        self.cam_cond_encoder = nn.ModuleList([DecoderBlock(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, qkv_bias=True, norm_layer=norm_layer, norm_mem=norm_im2_in_dec, rope=self.rope) for i in range(dec_depth)])
+        self.cam_cond_encoder = nn.ModuleList([AttnBlock(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, attn_class=nn.MultiheadAttention)
+                for _ in range(dec_depth)])
+        self.pose_token_ref = nn.Parameter(torch.randn(1, 1, dec_embed_dim))
+        self.pose_token_source = nn.Parameter(torch.randn(1, 1, dec_embed_dim))
+        
         self.cam_cond_embed = nn.ModuleList([nn.Linear(dec_embed_dim, dec_embed_dim, bias=False) for i in range(dec_depth)])
+        # self.cam_cond_encoder1_stage2 = nn.ModuleList([DecoderBlock_onlyself(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, qkv_bias=True, norm_layer=norm_layer, norm_mem=norm_im2_in_dec, rope=self.rope) for _ in range(dec_depth)])
+        # self.cam_cond_encoder2_stage2 = nn.ModuleList([DecoderBlock_onlyself(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, qkv_bias=True, norm_layer=norm_layer, norm_mem=norm_im2_in_dec, rope=self.rope) for _ in range(dec_depth)])
 
         self.dec_norm = norm_layer(dec_embed_dim)
-        
+        self.dec_cam_norm = norm_layer(dec_embed_dim)
+
     def _set_prediction_head(self, dec_embed_dim, patch_size):
          self.prediction_head = nn.Linear(dec_embed_dim, patch_size**2 * 3, bias=True)
         
@@ -120,18 +140,38 @@ class CroCoNet(nn.Module):
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
-        if m in self.cam_cond_embed:
-            m.weight.data.fill_(0.)
-        elif isinstance(m, nn.Linear):
+        if isinstance(m, nn.Linear):
             # we use xavier_uniform following official JAX ViT:
             torch.nn.init.xavier_uniform_(m.weight)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
+            if m.elementwise_affine == True:
+                nn.init.constant_(m.bias, 0)
+                nn.init.constant_(m.weight, 1.0)
         
-            
+    def _encode_image_fine(self, image, shapes, dtype=torch.float32):
+        """
+        image has B x 3 x img_size x img_size 
+        do_mask: whether to perform masking or not
+        return_all_blocks: if True, return the features at the end of every block 
+                           instead of just the features from the last block (eg for some prediction heads)
+        """
+        # embed the image into patches  (x has size B x Npatches x C) 
+        # and get position if each return patch (pos has size B x Npatches x 2)
+        x, pos = self.patch_embed_fine(image, shapes)   
+        x = x.to(dtype)          
+        # add positional embedding without cls token  
+        B,N,C = x.size()
+        posvis = pos
+        # now apply the transformer encoder and normalization        
+        for blk in self.enc_fine_blocks:
+            x = blk(x, posvis)
+        x = self.enc_fine_norm(x)
+        x, pos = self.patch_embed_fine2(x)
+        x = self.enc_fine_norm2(x)
+        return x, pos, None
+ 
     def _encode_image(self, image, do_mask=False, return_all_blocks=False):
         """
         image has B x 3 x img_size x img_size 

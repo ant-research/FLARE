@@ -8,12 +8,8 @@ from copy import deepcopy
 import torch
 import os
 from packaging import version
-import huggingface_hub
 import torch.nn as nn
-import torchvision.models as tvm
 import dust3r.utils.path_to_croco  # noqa: F401
-from models.croco_cross import CroCoNet  # noqa
-
 inf = float('inf')
 import torch.nn as nn
 import torch.nn.functional as F
