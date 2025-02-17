@@ -38,7 +38,9 @@ class CustomDataset(BaseStereoViewDataset_test):
     def _get_views(self, idx, resolution, rng):
         images_list = glob.glob(osp.join(self.ROOT, '*.png')) + glob.glob(osp.join(self.ROOT, '*.jpg')) + glob.glob(osp.join(self.ROOT, '*.JPG'))
         images_list = sorted(images_list)
-        images_list = random.sample(images_list, self.num_image + self.gt_num_image)
+        self.num_image = len(images_list)
+        self.gt_num_image = 0
+        # images_list = random.sample(images_list, self.num_image + self.gt_num_image)
         views = []
         for image in images_list:
             rgb_image = self.image_read(image)

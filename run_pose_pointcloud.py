@@ -21,7 +21,7 @@ inf = float('inf')
 from mast3r.losses import MeshOutput
 import dust3r.utils.path_to_croco  # noqa: F401
 import croco.utils.misc as misc  # noqa
-from croco.utils.misc import NativeScalerWithGradNormCount as NativeScaler  # noqa
+import torch.nn.functional as F
 
 def get_args_parser():
     parser = argparse.ArgumentParser('DUST3R training', add_help=False)
@@ -109,6 +109,71 @@ def build_dataset(dataset, batch_size, num_workers, test=False):
     print(f"{split} dataset length: ", len(loader))
     return loader
 
+def pad_to_square(reshaped_image):
+    B, C, H, W = reshaped_image.shape
+    max_dim = max(H, W)
+    pad_height = max_dim - H
+    pad_width = max_dim - W
+    padding = (pad_width // 2, pad_width - pad_width // 2,
+               pad_height // 2, pad_height - pad_height // 2)
+    padded_image = F.pad(reshaped_image, padding, mode='constant', value=0)
+    return padded_image
+
+def generate_rank_by_dino(
+    reshaped_image, backbone, query_frame_num, image_size=336
+):
+    # Downsample image to image_size x image_size
+    # because we found it is unnecessary to use high resolution
+    rgbs = pad_to_square(reshaped_image)
+    rgbs = F.interpolate(
+        reshaped_image,
+        (image_size, image_size),
+        mode="bilinear",
+        align_corners=True,
+    )
+    rgbs = _resnet_normalize_image(rgbs.cuda())
+
+    # Get the image features (patch level)
+    frame_feat = backbone(rgbs, is_training=True)
+    frame_feat = frame_feat["x_norm_patchtokens"]
+    frame_feat_norm = F.normalize(frame_feat, p=2, dim=1)
+
+    # Compute the similiarty matrix
+    frame_feat_norm = frame_feat_norm.permute(1, 0, 2)
+    similarity_matrix = torch.bmm(
+        frame_feat_norm, frame_feat_norm.transpose(-1, -2)
+    )
+    similarity_matrix = similarity_matrix.mean(dim=0)
+    distance_matrix = 100 - similarity_matrix.clone()
+
+    # Ignore self-pairing
+    similarity_matrix.fill_diagonal_(-100)
+
+    similarity_sum = similarity_matrix.sum(dim=1)
+
+    # Find the most common frame
+    most_common_frame_index = torch.argmax(similarity_sum).item()
+    return most_common_frame_index
+
+_RESNET_MEAN = [0.485, 0.456, 0.406]
+_RESNET_STD = [0.229, 0.224, 0.225]
+_resnet_mean = torch.tensor(_RESNET_MEAN).view(1, 3, 1, 1).cuda()
+_resnet_std = torch.tensor(_RESNET_STD).view(1, 3, 1, 1).cuda()
+def _resnet_normalize_image(img: torch.Tensor) -> torch.Tensor:
+        return (img - _resnet_mean) / _resnet_std
+
+def calculate_index_mappings(query_index, S, device=None):
+    """
+    Construct an order that we can switch [query_index] and [0]
+    so that the content of query_index would be placed at [0]
+    """
+    new_order = torch.arange(S)
+    new_order[0] = query_index
+    new_order[query_index] = 0
+    if device is not None:
+        new_order = new_order.to(device)
+    return new_order
+
 @torch.no_grad()
 def test_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                    data_loader: Sized, device: torch.device, epoch: int,
@@ -127,7 +192,20 @@ def test_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         gt_num_image = data_loader.dataset.dataset.gt_num_image
     except:
         gt_num_image = data_loader.dataset.gt_num_image
+    backbone = torch.hub.load(
+        "facebookresearch/dinov2", "dinov2_vitb14_reg"
+        )
+    backbone = backbone.eval().cuda()
     for i, batch in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
+        images = [gt['img_org'] for gt in batch]
+        images = torch.cat(images, dim=0)
+        images = images / 2 + 0.5
+        index = generate_rank_by_dino(images, backbone, query_frame_num=1)
+        sorted_order = calculate_index_mappings(index, len(images), device=device)
+        sorted_batch = []
+        for i in range(len(batch)):
+            sorted_batch.append(batch[sorted_order[i]])
+        batch = sorted_batch
         loss_tuple = loss_of_one_batch(gt_num_image, batch, model, criterion, device,
                                     symmetrize_batch=True,
                                     use_amp=bool(args.amp))

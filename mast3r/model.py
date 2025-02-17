@@ -38,7 +38,7 @@ def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
 class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
-    def __init__(self, debug_index=True, wo_cascade_pose=False, wogs=True, inject_lowtoken = True, only_pose=False, desc_mode=('norm'), two_confs=False, desc_conf_mode=None, **kwargs):
+    def __init__(self, debug_index=True, wo_cascade_pose=False,  wogs=True, inject_lowtoken = True, only_pose=False, desc_mode=('norm'), two_confs=False, desc_conf_mode=None, **kwargs):
         self.desc_mode = desc_mode
         self.two_confs = two_confs
         self.desc_conf_mode = desc_conf_mode
@@ -387,6 +387,7 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         # normalize last output
         del final_output[1]  # duplicate with final_output[0]
         final_output[-1] = self.dec_norm_fine(final_output[-1])
+
         cam_tokens[-1] = tuple(map(self.dec_cam_norm_fine, cam_tokens[-1]))
         return final_output, zip(*cam_tokens)
     
