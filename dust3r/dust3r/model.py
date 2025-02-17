@@ -65,11 +65,9 @@ class AsymmetricCroCo3DStereo (
         self.patch_embed_cls = patch_embed_cls
         self.croco_args = fill_default_args(croco_kwargs, super().__init__)
         super().__init__(**croco_kwargs)
-
         # dust3r specific initialization
         self.dec_blocks2 = deepcopy(self.dec_blocks)
         self.set_downstream_head(output_mode, head_type, landscape_only, depth_mode, conf_mode, **croco_kwargs)
-        # self.set_freeze(freeze)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kw):
@@ -165,7 +163,6 @@ class AsymmetricCroCo3DStereo (
 
     def _decoder(self, f1, pos1, f2, pos2):
         final_output = [(f1, f2)]  # before projection
-
         # project to decoder dim
         f1 = self.decoder_embed(f1)
         f2 = self.decoder_embed(f2)
@@ -191,7 +188,6 @@ class AsymmetricCroCo3DStereo (
             f2 = f2.view(B, -1 ,C)
             # store the result
             final_output.append((f1, f2))
-
         # normalize last output
         del final_output[1]  # duplicate with final_output[0]
         final_output[-1] = tuple(map(self.dec_norm, final_output[-1]))
@@ -199,34 +195,5 @@ class AsymmetricCroCo3DStereo (
 
     def _downstream_head(self, head_num, decout, img_shape):
         B, S, D = decout[-1].shape
-        # img_shape = tuple(map(int, img_shape))
         head = getattr(self, f'head{head_num}')
         return head(decout, img_shape)
-
-    # def forward(self, view1, view2, enabled=True, dtype=torch.bfloat16):
-    #     # encode the two images --> B,S,D
-    #     batch_size, _, _, _  = view1[0]['img'].shape
-    #     view_num = len(view2)
-
-    #     shapes, feat, feat_ray, pos, real_pose, scale, valid1, valid2 = self._encode_symmetrized(view1+view2)
-
-    #     feat1 = feat[:batch_size].view(batch_size, -1, feat.shape[1], feat.shape[2])
-    #     feat2 = feat[batch_size:].view(batch_size, -1, feat.shape[1], feat.shape[2])
-    #     pos1 = pos[:batch_size].view(batch_size, -1, pos.shape[1], pos.shape[2])
-    #     pos2 = pos[batch_size:].view(batch_size, -1, pos.shape[1], pos.shape[2])
-    #     shape1 = shapes[:batch_size].view(batch_size, -1, shapes.shape[1])
-    #     shape2 = shapes[batch_size:].view(batch_size, -1, shapes.shape[1])
-    #     feat_ray1 = feat_ray[:batch_size].view(batch_size, -1, feat_ray.shape[1], feat_ray.shape[2])
-    #     feat_ray2 = feat_ray[batch_size:].view(batch_size, -1, feat_ray.shape[1], feat_ray.shape[2])
-    #     dec1, dec2 = self._decoder(feat1, pos1, feat2, pos2, feat_ray1, feat_ray2)
-    #     feat1 = [tok.float().view(-1, tok.shape[-2], tok.shape[-1]) for tok in dec1]
-    #     feat2 = [tok.float().view(batch_size*view_num, -1, tok.shape[-1]) for tok in dec2]
-    #     # combine all ref images into object-centric representation
-    #     dec1, dec2 = self._decoder(feat1, pos1, feat2, pos2)
-    #     with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
-    #         res1 = self._downstream_head(1, [tok.float().view(-1, tok.shape[-2], tok.shape[-1]) for tok in dec1], shape1)
-    #         res2 = self._downstream_head(2, [tok.float().view(batch_size*view_num, -1, tok.shape[-1]) for tok in dec2], shape2)
-
-    #     res2['pts3d_in_other_view'] = res2.pop('pts3d')  # predict view2's pts3d in view1's frame
-    #     pred_cameras, _ = self.pose_head(batch_size, pos_encoding=pos, interm_feature1=feat1, interm_feature2=feat2)
-    #     return res1, res2

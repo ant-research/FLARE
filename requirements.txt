@@ -9,6 +9,7 @@ trimesh
 tensorboard
 pyglet<2
 huggingface-hub[torch]>=0.22
+pillow==10.3.0
 pillow-heif  # add heif/heic image support
 pyrender  # for rendering depths in scannetpp
 kapture  # for visloc data loading
@@ -20,6 +21,9 @@ git+https://github.com/nerfstudio-project/gsplat.git
 matplotlib
 scikit-image
 imageio
-pyrender=0.1.45
+pyrender==0.1.45
 git+https://github.com/facebookresearch/pytorch3d.git
 pathlib
+nerfvis
+h5py
+joblib

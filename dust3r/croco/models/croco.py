@@ -12,7 +12,6 @@ import torch
 import torch.nn as nn
 torch.backends.cuda.matmul.allow_tf32 = True # for gpu >= Ampere and pytorch >= 1.12
 from functools import partial
-
 from models.blocks import Block, DecoderBlock, PatchEmbed, DecoderBlock_onlyself, DecoderBlock_onlycross
 from models.pos_embed import get_2d_sincos_pos_embed, RoPE2D 
 from models.masking import RandomMask
@@ -69,9 +68,6 @@ class CroCoNet(nn.Module):
         self.enc_blocks = nn.ModuleList([
             Block(enc_embed_dim, enc_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer, rope=self.rope)
             for i in range(enc_depth)])
-        # self.enc_fine_blocks = nn.ModuleList([
-        #     Block(enc_embed_dim // 64, enc_num_heads//16, mlp_ratio, qkv_bias=True, norm_layer=norm_layer, rope=self.rope)
-        #     for i in range(enc_depth//4)])
         self.enc_norm = norm_layer(enc_embed_dim)
         self.enc_blocks_stage2 = nn.ModuleList([
             Block(enc_embed_dim, enc_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer, rope=self.rope)
@@ -121,9 +117,6 @@ class CroCoNet(nn.Module):
         self.pose_token_source = nn.Parameter(torch.randn(1, 1, dec_embed_dim))
         
         self.cam_cond_embed = nn.ModuleList([nn.Linear(dec_embed_dim, dec_embed_dim, bias=False) for i in range(dec_depth)])
-        # self.cam_cond_encoder1_stage2 = nn.ModuleList([DecoderBlock_onlyself(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, qkv_bias=True, norm_layer=norm_layer, norm_mem=norm_im2_in_dec, rope=self.rope) for _ in range(dec_depth)])
-        # self.cam_cond_encoder2_stage2 = nn.ModuleList([DecoderBlock_onlyself(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, qkv_bias=True, norm_layer=norm_layer, norm_mem=norm_im2_in_dec, rope=self.rope) for _ in range(dec_depth)])
-
         self.dec_norm = norm_layer(dec_embed_dim)
         self.dec_cam_norm = norm_layer(dec_embed_dim)
 

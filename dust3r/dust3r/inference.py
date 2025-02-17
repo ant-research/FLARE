@@ -47,13 +47,10 @@ def loss_of_one_batch_2v(gt_num_image, batch, model, criterion, device, symmetri
                 view[name] = view[name].to(device, non_blocking=True)
                 if view[name].dtype == torch.float32 and name not in ignore_dtype_keys:
                     view[name] = view[name].to(dtype)
-        # if symmetrize_batch:
-        #     view1, view2 = make_batch_symmetric(batch)
         view1 = views[:1]
         view2 = views[1:2]
         render_gt = views[2:]
         pred1, pred2, pred_cameras = model(view1, view2, bool(use_amp), dtype)
-        # loss is supposed to be symmetric
         with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
             loss = criterion(view1, view2, pred1, pred2, pred_cameras, render_gt=render_gt) if criterion is not None else None
         result = dict(view1=view1, view2=view2, pred1=pred1, pred2=pred2, loss=loss)
@@ -77,8 +74,7 @@ def loss_of_one_batch(gt_num_image, batch, model, criterion, device, symmetrize_
                 view[name] = view[name].to(device, non_blocking=True)
                 if view[name].dtype == torch.float32 and name not in ignore_dtype_keys:
                     view[name] = view[name].to(dtype)
-        # if symmetrize_batch:
-        #     view1, view2 = make_batch_symmetric(batch)
+                    
         view1 = views[:1]
         if gt_num_image == 0:
             view2 = views[1:]
@@ -89,7 +85,7 @@ def loss_of_one_batch(gt_num_image, batch, model, criterion, device, symmetrize_
         else:
             view2 = views[1:-gt_num_image]
             if (len(views)-gt_num_image) != 2 :
-                render_gt = views#views[:(len(views)-gt_num_image)//2] + views[-gt_num_image:]
+                render_gt = views
             else:
                 render_gt = views[:2] + views[-gt_num_image:]
 
@@ -99,112 +95,6 @@ def loss_of_one_batch(gt_num_image, batch, model, criterion, device, symmetrize_
             loss = criterion(view1, view2, pred1, pred2, pred_cameras, render_gt=render_gt) if criterion is not None else None
         result = dict(view1=view1, view2=view2, pred1=pred1, pred2=pred2, loss=loss)
     return result[ret] if ret else result
-
-
-# def loss_of_one_batch(gt_num_image, batch, model, criterion, device, symmetrize_batch=False, use_amp=False, ret=None):
-#     if bool(use_amp):
-#         dtype = torch.bfloat16
-#     else:
-#         dtype = torch.float32
-
-#     with torch.cuda.amp.autocast(enabled=bool(use_amp), dtype=dtype):
-#         views = batch
-#         ignore_keys = set(['depthmap', 'dataset', 'label', 'instance', 'idx', 'true_shape', 'rng'])
-#         ignore_dtype_keys = set(['camera_pose', 'pts3d', 'fxfycxcy', 'img_org', 'camera_intrinsics', 'depthmap', 'depth_anything', 'fxfycxcy_unorm'])
-
-#         for view in batch:
-#             for name in view.keys():  # pseudo_focal
-#                 if name in ignore_keys:
-#                     continue
-#                 view[name] = view[name].to(device, non_blocking=True)
-#                 if view[name].dtype == torch.float32 and name not in ignore_dtype_keys:
-#                     view[name] = view[name].to(dtype)
-#         # if symmetrize_batch:
-#         #     view1, view2 = make_batch_symmetric(batch)
-#         view1 = views[:1]
-#         if gt_num_image == 0:
-#             view2 = views[1:]
-#             render_gt = views[:len(views)//2]
-#         else:
-#             view2 = views[1:-gt_num_image]
-#             if (len(views)-gt_num_image) != 2 :
-#                 render_gt = views[:(len(views)-gt_num_image)//2] + views[-gt_num_image:]
-#             else:
-#                 render_gt = views[:2] + views[-gt_num_image:]
-        
-#         pred1, pred2, pred_cameras = model(view1, view2, bool(use_amp), dtype)
-#         # loss is supposed to be symmetric
-#         with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
-#             loss = criterion(view1, view2, pred1, pred2, pred_cameras, render_gt=render_gt) if criterion is not None else None
-#         result = dict(view1=view1, view2=view2, pred1=pred1, pred2=pred2, loss=loss)
-#     return result[ret] if ret else result
-
-def loss_of_one_batch_colmap(gt_num_image, batch, model, criterion, device, symmetrize_batch=False, use_amp=False, ret=None):
-    if bool(use_amp):
-        dtype = torch.bfloat16
-    else:
-        dtype = torch.float32
-
-    with torch.cuda.amp.autocast(enabled=bool(use_amp), dtype=dtype):
-        views = batch
-        ignore_keys = set(['depthmap', 'dataset', 'label', 'instance', 'idx', 'true_shape', 'rng'])
-        ignore_dtype_keys = set(['camera_pose', 'pts3d', 'fxfycxcy', 'img_org', 'camera_intrinsics'])
-
-        for view in batch:
-            for name in view.keys():  # pseudo_focal
-                if name in ignore_keys:
-                    continue
-                view[name] = view[name].to(device, non_blocking=True)
-                if view[name].dtype == torch.float32 and name not in ignore_dtype_keys:
-                    view[name] = view[name].to(dtype)
-
-        # if symmetrize_batch:
-        #     view1, view2 = make_batch_symmetric(batch)
-        render_gt = views
-        view1 = views[:1]
-        if gt_num_image == 0:
-            view2 = views[1:]
-        else:
-            view2 = views[1:-gt_num_image]
-        with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
-            loss = criterion(view1, view2, pred1, pred2, pred_cameras, render_gt=render_gt) if criterion is not None else None
-        result = dict(view1=view1, view2=view2, pred1=pred1, pred2=pred2, loss=loss)
-    return result[ret] if ret else result
-
-
-def loss_of_one_batch_rvq(gt_num_image, batch, model, criterion, device, symmetrize_batch=False, use_amp=False, ret=None, valid=False):
-    if bool(use_amp):
-        dtype = torch.bfloat16
-    else:
-        dtype = torch.float32
-
-    with torch.cuda.amp.autocast(enabled=bool(use_amp), dtype=dtype):
-        views = batch
-        ignore_keys = set(['depthmap', 'dataset', 'label', 'instance', 'idx', 'true_shape', 'rng'])
-        ignore_dtype_keys = set(['camera_pose', 'pts3d', 'fxfycxcy', 'img_org'])
-
-        for view in batch:
-            for name in view.keys():  # pseudo_focal
-                if name in ignore_keys:
-                    continue
-                view[name] = view[name].to(device, non_blocking=True)
-                if view[name].dtype == torch.float32 and name not in ignore_dtype_keys:
-                    view[name] = view[name].to(dtype)
-
-        # if symmetrize_batch:
-        #     view1, view2 = make_batch_symmetric(batch)
-        render_gt = views
-        view1 = views[:1]
-        if gt_num_image == 0:
-            view2 = views[1:]
-        else:
-            view2 = views[1:-gt_num_image]
-        with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
-            outputs, xs_recon, xs = model(view1, view2, bool(use_amp), dtype, valid=valid)
-            loss = criterion(outputs, xs_recon, xs) if criterion is not None else None
-        result = dict(outputs=outputs, loss=loss)
-    return result[ret] if ret else result
-
 
 @torch.no_grad()
 def inference(pairs, model, device, batch_size=8, verbose=True):

@@ -19,7 +19,7 @@ from ace_util import load_npz_file
 import time
 import re
 import numpy as np
-import dsacstar
+# import dsacstar
 from collections import namedtuple
 # import dataset_io
 import pickle
@@ -160,26 +160,26 @@ def regitser_visulization(opt):
                 scene_coordinates_3HW = torch.from_numpy(ours_pts3d.transpose(2, 0, 1)).float()
 
                 # Compute the pose via RANSAC.
-                inlier_count = dsacstar.forward_rgb(
-                    scene_coordinates_3HW.unsqueeze(0),
-                    out_pose,
-                    opt.hypotheses,
-                    opt.threshold,
-                    focal_length,
-                    ppX,
-                    ppY,
-                    opt.inlieralpha,
-                    opt.maxpixelerror,
-                    1, 
-                    opt.base_seed,
-                    opt.hypotheses_max_tries
-                )
+                # inlier_count = dsacstar.forward_rgb(
+                #     scene_coordinates_3HW.unsqueeze(0),
+                #     out_pose,
+                #     opt.hypotheses,
+                #     opt.threshold,
+                #     focal_length,
+                #     ppX,
+                #     ppY,
+                #     opt.inlieralpha,
+                #     opt.maxpixelerror,
+                #     1, 
+                #     opt.base_seed,
+                #     opt.hypotheses_max_tries
+                # )
 
                 estimates_list.append(TestEstimate(
                     pose_est=ours_pose,
                     pose_gt=None,
                     focal_length=focal_length,
-                    confidence=inlier_count,
+                    confidence=10000,
                     image_file=frame_path
                 ))
 
