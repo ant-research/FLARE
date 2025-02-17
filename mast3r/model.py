@@ -38,7 +38,7 @@ def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
 class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
-    def __init__(self, debug_index=True, wo_cascade_pose=False,  use_norm_res=False,  wogs=True, inject_lowtoken = False, only_pose=False, desc_mode=('norm'), two_confs=False, desc_conf_mode=None, **kwargs):
+    def __init__(self, debug_index=True, wo_cascade_pose=False, wogs=True, inject_lowtoken = True, only_pose=False, desc_mode=('norm'), two_confs=False, desc_conf_mode=None, **kwargs):
         self.desc_mode = desc_mode
         self.two_confs = two_confs
         self.desc_conf_mode = desc_conf_mode
@@ -46,7 +46,6 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         self.wogs = wogs
         self.only_pose = only_pose
         self.inject_lowtoken = inject_lowtoken
-        self.use_norm_res = use_norm_res
         self.debug_index = debug_index
         super().__init__(**kwargs)
         self.dec_blocks_point = copy.deepcopy(self.dec_blocks_fine)
@@ -69,11 +68,7 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         self.cnn_fusion = nn.Conv2d(32*3, 64, 3, 1, 1)
 
         self.dec_cam_norm_fine = copy.deepcopy(self.dec_cam_norm)
-        self.dec_norm_fine = copy.deepcopy(self.dec_norm)
-        if self.use_norm_res:
-            self.dec_norm_fine_list = nn.ModuleList([copy.deepcopy(self.dec_norm) for i in range(2)])
-        if self.use_norm_res:
-            self.dec_norm_point_list = nn.ModuleList([copy.deepcopy(self.dec_norm) for i in range(2)])       
+        self.dec_norm_fine = copy.deepcopy(self.dec_norm)     
         self.dec_norm_point = copy.deepcopy(self.dec_norm)
         self.pose_token_ref_fine = copy.deepcopy(self.pose_token_ref)
         self.pose_token_ref_point = copy.deepcopy(self.pose_token_ref)
@@ -392,10 +387,6 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         # normalize last output
         del final_output[1]  # duplicate with final_output[0]
         final_output[-1] = self.dec_norm_fine(final_output[-1])
-        if self.use_norm_res:
-            for i, hook_idx in enumerate(self.downstream_head2.dpt.hooks[1:3]):
-                final_output[hook_idx] = self.dec_norm_fine_list[i](final_output[hook_idx])
-                
         cam_tokens[-1] = tuple(map(self.dec_cam_norm_fine, cam_tokens[-1]))
         return final_output, zip(*cam_tokens)
     
@@ -476,9 +467,6 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
             final_output.append(f)
             f = f.view(B, -1 ,C)
 
-        if self.use_norm_res:
-            for i, hook_idx in enumerate(self.downstream_head2.dpt.hooks[1:3]):
-                final_output[hook_idx] = self.dec_norm_point_list[i](final_output[hook_idx])
         # normalize last output
         del final_output[1]  # duplicate with final_output[0]
         final_output[-1] = self.dec_norm_point(final_output[-1])
