@@ -10,8 +10,8 @@ Official implementation of **FLARE** (arXiv 2025) - a feed-forward model for joi
 ## 📖 Overview
 We present FLARE, a feed-forward model that simultaneously estimates high-quality camera poses, 3D geometry, and appearance from as few as 2-8 uncalibrated images. Our cascaded learning paradigm:
 
-1. **Camera Pose Estimation**: Serves as the geometric foundation
-2. **Geometry Reconstruction**: Builds camera-centric 3D structure
+1. **Camera Pose Estimation**: Directly regress camera poses without bundle adjustment
+2. **Geometry Reconstruction**: Decompose geometry reconstruction into two simpler sub-problems
 3. **Appearance Modeling**: Enables photorealistic novel view synthesis via 3D Gaussians
 
 Achieves SOTA performance with inference times <0.5 seconds!
