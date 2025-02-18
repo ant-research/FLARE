@@ -70,11 +70,12 @@ CUDA_VISIBLE_DEVICES=0 python visualizer/run_vis.py --result_npz data/mesh/IMG_1
 
 ## 📜 Citation
 ```bibtex
-@misc{zhang2025flare,
-  title={FLARE: Feed-forward Geometry, Appearance and Camera Estimation from Uncalibrated Sparse Views},
-  author={Zhang, Shangzhan and Wang, Jianyuan and Xu, Yinghao and Xue, Nan and Rupprecht, Christian and Zhou, Xiaowei and Shen, Yujun and Wetzstein, Gordon},
-  year={2025},
-  eprint={},
-  archivePrefix={arXiv},
-  primaryClass={cs.CV}
+@misc{zhang2025flarefeedforwardgeometryappearance,
+      title={FLARE: Feed-forward Geometry, Appearance and Camera Estimation from Uncalibrated Sparse Views}, 
+      author={Shangzhan Zhang and Jianyuan Wang and Yinghao Xu and Nan Xue and Christian Rupprecht and Xiaowei Zhou and Yujun Shen and Gordon Wetzstein},
+      year={2025},
+      eprint={2502.12138},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2502.12138}, 
 }
