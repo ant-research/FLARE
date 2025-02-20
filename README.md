@@ -21,6 +21,7 @@ Achieves SOTA performance with inference times <0.5 seconds!
 - [ ] Release novel view synthesis code. (~2 weeks)
 - [ ] Release evaluation code. (~2 weeks)
 - [ ] Release training code.
+- [ ] Release data processing code.
 
 ## 🌍 Installation
 
