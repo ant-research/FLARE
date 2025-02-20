@@ -58,7 +58,6 @@ Download the checkpoint from [huggingface](https://huggingface.co/AntResearch/FL
 sh run_pose_pointcloud.sh
 ```
 
-or
 
 ```
 torchrun --nproc_per_node=1 run_pose_pointcloud.py \
@@ -74,7 +73,6 @@ torchrun --nproc_per_node=1 run_pose_pointcloud.py \
 sh ./visualizer/vis.sh
 ```
  
-or 
 
 ```
 CUDA_VISIBLE_DEVICES=0 python visualizer/run_vis.py --result_npz data/mesh/IMG_1511.HEIC.JPG.JPG/pred.npz --results_folder data/mesh/IMG_1511.HEIC.JPG.JPG/
