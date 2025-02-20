@@ -7,6 +7,19 @@ Official implementation of **FLARE** (arXiv 2025) - a feed-forward model for joi
 
 ![Teaser Video](./assets/teaser.jpg)
 
+
+<!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
+
+- [📖 Overview](#-overview)
+- [🛠️ TODO List](#-todo-list)
+- [🌍 Installation](#-installation)
+- [💿 Checkpoints](#-checkpoints)
+- [🎯 Run a Demo (Point Cloud and Camera Pose Estimation) ](#-run-a-demo-point-cloud-and-camera-pose-estimation)
+- [👀 Visualization ](#-visualization)
+- [📜 Citation ](#-citation)
+
+<!-- TOC end -->
+
 ## 📖 Overview
 We present FLARE, a feed-forward model that simultaneously estimates high-quality camera poses, 3D geometry, and appearance from as few as 2-8 uncalibrated images. Our cascaded learning paradigm:
 
@@ -38,7 +51,7 @@ conda install -c conda-forge ffmpeg
 ## 💿 Checkpoints
 Download the checkpoint from [huggingface](https://huggingface.co/AntResearch/FLARE/blob/main/geometry_pose.pth) and place it in the /checkpoints/geometry_pose.pth directory.
 
-## 🎯 Run a Demo (Point Cloud and Camera Pose Estimation)
+## 🎯 Run a Demo (Point Cloud and Camera Pose Estimation) 
 
 
 ```
@@ -55,7 +68,7 @@ torchrun --nproc_per_node=1 run_pose_pointcloud.py \
     --test_criterion "MeshOutput(sam=False)" --output_dir "log/" --amp 1 --seed 1 --num_workers 0
 ```
 
-## 👀 Visualization
+## 👀 Visualization 
 
 ```
 sh ./visualizer/vis.sh
@@ -68,8 +81,7 @@ CUDA_VISIBLE_DEVICES=0 python visualizer/run_vis.py --result_npz data/mesh/IMG_1
 ``` 
 
 
-
-## 📜 Citation
+## 📜 Citation 
 ```bibtex
 @misc{zhang2025flarefeedforwardgeometryappearance,
       title={FLARE: Feed-forward Geometry, Appearance and Camera Estimation from Uncalibrated Sparse Views}, 
