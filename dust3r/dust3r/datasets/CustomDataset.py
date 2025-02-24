@@ -11,7 +11,6 @@ import cv2
 import numpy as np
 import random
 import mast3r.utils.path_to_dust3r  # noqa
-# check the presence of models directory in repo to be sure its cloned
 from dust3r.datasets.base.base_stereo_view_dataset import BaseStereoViewDataset_test
 from collections import deque
 import os
@@ -21,8 +20,9 @@ import glob
 from pathlib import Path
 
 class CustomDataset(BaseStereoViewDataset_test):
-    def __init__(self, *args, split, ROOT, only_pose=False, sequential_input=False, index_list=None, **kwargs):
+    def __init__(self, *args, split, ROOT, wpose=False, sequential_input=False, index_list=None, **kwargs):
         self.ROOT = ROOT
+        self.wpose = wpose
         self.sequential_input = sequential_input
         super().__init__(*args, **kwargs)
 
@@ -34,19 +34,40 @@ class CustomDataset(BaseStereoViewDataset_test):
         img = cv2.imread(image_file)
         return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
+    def read_cam_file(self, filename):
+        with open(filename) as f:
+            lines = [line.rstrip() for line in f.readlines()]
+        # extrinsics: line [1,5), 4x4 matrix
+        extrinsics = np.fromstring(' '.join(lines[1:5]), dtype=np.float32, sep=' ')
+        extrinsics = extrinsics.reshape((4, 4))
+        # intrinsics: line [7-10), 3x3 matrix
+        intrinsics = np.fromstring(' '.join(lines[7:10]), dtype=np.float32, sep=' ')
+        intrinsics = intrinsics.reshape((3, 3))
+        # depth_min & depth_interval: line 11
+        depth_min = float(lines[11].split()[0])
+        depth_interval = float(lines[11].split()[1])
+        return intrinsics, extrinsics, depth_min, depth_interval
+
   
     def _get_views(self, idx, resolution, rng):
         images_list = glob.glob(osp.join(self.ROOT, '*.png')) + glob.glob(osp.join(self.ROOT, '*.jpg')) + glob.glob(osp.join(self.ROOT, '*.JPG'))
         images_list = sorted(images_list)
-        self.num_image = len(images_list)
+        if self.num_image != len(images_list):
+            images_list = random.sample(images_list, self.num_image)
         self.gt_num_image = 0
-        # images_list = random.sample(images_list, self.num_image + self.gt_num_image)
         views = []
         for image in images_list:
             rgb_image = self.image_read(image)
             H, W = rgb_image.shape[:2]
-            intrinsics = np.array([[W, 0, W/2], [0, H, H/2], [0, 0, 1]])
-            camera_pose = np.eye(4)
+            if self.wpose == False:
+                intrinsics = np.array([[W, 0, W/2], [0, H, H/2], [0, 0, 1]])
+                camera_pose = np.eye(4)
+            else:
+                image_index = image.split('/')[-1].split('.')[0]
+                proj_mat_filename = os.path.join(self.ROOT, image_index+'.txt')
+                intrinsics, camera_pose, depth_min, depth_interval = self.read_cam_file(proj_mat_filename)
+                camera_pose = np.linalg.inv(camera_pose)
+
             depthmap = np.zeros((H, W))
             rgb_image, depthmap, intrinsics = self._crop_resize_if_necessary(
                 rgb_image, depthmap, intrinsics, resolution, rng=rng, info=None)

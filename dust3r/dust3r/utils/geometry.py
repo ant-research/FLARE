@@ -13,6 +13,38 @@ from dust3r.utils.device import to_numpy
 import torch.nn.functional as F
 from pytorch3d.transforms.rotation_conversions import matrix_to_quaternion, quaternion_to_matrix
 
+def closed_form_inverse(se3, R=None, T=None):
+    """
+    Computes the inverse of each 4x4 SE3 matrix in the batch.
+    This function assumes PyTorch3D coordinate.
+
+
+    Args:
+    - se3 (Tensor): Nx4x4 tensor of SE3 matrices.
+
+    Returns:
+    - Tensor: Nx4x4 tensor of inverted SE3 matrices.
+    """
+    if R is None:
+        R = se3[:, :3, :3]
+
+    if T is None:
+        T = se3[:, :3, 3:]
+
+    # Compute the transpose of the rotation
+    R_transposed = R.transpose(1, 2)
+
+    # -R^T t
+    top_right = -R_transposed.bmm(T)
+
+    inverted_matrix = torch.eye(4, 4)[None].repeat(len(se3), 1, 1)
+    inverted_matrix = inverted_matrix.to(R.dtype).to(R.device)
+
+    inverted_matrix[:, :3, :3] = R_transposed
+    inverted_matrix[:, :3, 3:] = top_right
+
+    return inverted_matrix
+
 def xy_grid(W, H, device=None, origin=(0, 0), unsqueeze=None, cat_dim=-1, homogeneous=False, **arange_kw):
     """ Output a (H,W,2) array of int32 
         with output[j,i,0] = i + origin[0]

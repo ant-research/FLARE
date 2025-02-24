@@ -3,7 +3,7 @@ import copy
 import torch.nn as nn
 import torch.nn.functional as F
 import os
-from dust3r.utils.geometry import inv, geotrf, normalize_pointcloud
+from dust3r.utils.geometry import inv, geotrf, normalize_pointcloud, closed_form_inverse
 from mast3r.catmlp_dpt_head import mast3r_head_factory
 from mast3r.vgg_pose_head import CameraPredictor, CameraPredictor_clean, Mlp
 from mast3r.shallow_cnn import FeatureNet
@@ -38,12 +38,12 @@ def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
 class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
-    def __init__(self, wogs=True, only_pose=False, desc_mode=('norm'), two_confs=False, desc_conf_mode=None, **kwargs):
+    def __init__(self, wpose=False, wogs=True,  desc_mode=('norm'), two_confs=False, desc_conf_mode=None, **kwargs):
         self.desc_mode = desc_mode
         self.two_confs = two_confs
         self.desc_conf_mode = desc_conf_mode
         self.wogs = wogs
-        self.only_pose = only_pose
+        self.wpose = wpose
         super().__init__(**kwargs)
         
         # Global Geometry Projector
@@ -439,14 +439,24 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         
         # coarse camera pose estimation
         feat1, pos1, feat2, pos2, pred_cameras_coarse, shape1, shape2, res1_stage1, res2_stage1, pose_token1, pose_token2, interm_features = self.forward_coarse_pose(view1, view2, enabled=enabled, dtype=dtype)
-        trans = pred_cameras_coarse[-1]['T'].float().detach().clone()
-        trans = trans.reshape(batch_size, -1, 3)
+        
+        if self.wpose == False:
+            trans = pred_cameras_coarse[-1]['T'].float().detach().clone()
+            trans = trans.reshape(batch_size, -1, 3)
+            quaternion_R_pred = pred_cameras_coarse[-1]['quaternion_R'].reshape(batch_size, -1, 4).float().detach().clone()
+        else:
+            ref_camera_pose = torch.cat([view['camera_pose'] for view in view1], 0).double()
+            trajectory = torch.cat([view['camera_pose'] for view in view1 + view2], 0).double()
+            in_camera1 = closed_form_inverse(ref_camera_pose)
+            trajectory = torch.bmm(in_camera1.repeat(trajectory.shape[0],1,1), trajectory) 
+            quaternion_R_pred = matrix_to_quaternion(trajectory[:, :3, :3]).float().reshape(batch_size, -1, 4)
+            trans = trajectory[:, :3, 3].float().reshape(batch_size, -1, 3)
+            gt_quaternion_R = quaternion_R_pred
+            gt_trans = trans
+        
         size =  (trans.norm(dim=-1, keepdim=True).mean(dim=-2, keepdim=True) + 1e-8)
         trans_pred = trans / size
-        quaternion_R_pred = pred_cameras_coarse[-1]['quaternion_R'].reshape(batch_size, -1, 4).float().detach().clone()
-        quaternion_R_noise = quaternion_R_pred
-        trans_noise = trans_pred
-        camera_embed = torch.cat((quaternion_R_noise, trans_noise), -1)
+        camera_embed = torch.cat((quaternion_R_pred, trans_pred), -1)
         camera_embed1 = camera_embed[:, :1].to(dtype)
         camera_embed2 = camera_embed[:, 1:].to(dtype)
         
@@ -461,11 +471,15 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         with torch.cuda.amp.autocast(enabled=False, dtype=torch.float32):
             pred_cameras, _ = self.pose_head_stage2(batch_size, interm_feature1=pose_token1_fine, interm_feature2=pose_token2_fine, enabled=True, dtype=torch.float32)
 
-        trans = pred_cameras[-1]['T'].float().detach().clone()
-        trans = trans.reshape(batch_size, -1, 3)
+        if self.wpose == False:
+            trans = pred_cameras[-1]['T'].float().detach().clone()
+            quaternion_R_pred = pred_cameras[-1]['quaternion_R'].reshape(batch_size, -1, 4).float().detach().clone()
+        else:
+            quaternion_R_pred = gt_quaternion_R
+            trans = gt_trans
+            
         size =  (trans.norm(dim=-1, keepdim=True).mean(dim=-2, keepdim=True) + 1e-8)
         trans_pred = trans / size
-        quaternion_R_pred = pred_cameras[-1]['quaternion_R'].reshape(batch_size, -1, 4).float().detach().clone()
         quaternion_R_noise = quaternion_R_pred
         trans_noise = trans_pred
         camera_embed = torch.cat((quaternion_R_noise, trans_noise), -1)

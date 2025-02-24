@@ -7,6 +7,19 @@ Official implementation of **FLARE** (arXiv 2025) - a feed-forward model for joi
 
 ![Teaser Video](./assets/teaser.jpg)
 
+
+<!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
+
+- [📖 Overview](#-overview)
+- [🛠️ TODO List](#-todo-list)
+- [🌍 Installation](#-installation)
+- [💿 Checkpoints](#-checkpoints)
+- [🎯 Run a Demo (Point Cloud and Camera Pose Estimation) ](#-run-a-demo-point-cloud-and-camera-pose-estimation)
+- [👀 Visualization ](#-visualization)
+- [📜 Citation ](#-citation)
+
+<!-- TOC end -->
+
 ## 📖 Overview
 We present FLARE, a feed-forward model that simultaneously estimates high-quality camera poses, 3D geometry, and appearance from as few as 2-8 uncalibrated images. Our cascaded learning paradigm:
 
@@ -21,6 +34,7 @@ Achieves SOTA performance with inference times <0.5 seconds!
 - [ ] Release novel view synthesis code. (~2 weeks)
 - [ ] Release evaluation code. (~2 weeks)
 - [ ] Release training code.
+- [ ] Release data processing code.
 
 ## 🌍 Installation
 
@@ -37,44 +51,49 @@ conda install -c conda-forge ffmpeg
 ## 💿 Checkpoints
 Download the checkpoint from [huggingface](https://huggingface.co/AntResearch/FLARE/blob/main/geometry_pose.pth) and place it in the /checkpoints/geometry_pose.pth directory.
 
-## 🎯 Run a Demo (Point Cloud and Camera Pose Estimation)
+## 🎯 Run a Demo (Point Cloud and Camera Pose Estimation) 
 
 
-```
+```bash
 sh run_pose_pointcloud.sh
 ```
 
-or
 
-```
+```bash
 torchrun --nproc_per_node=1 run_pose_pointcloud.py \
-    --test_dataset "1 @ CustomDataset(split='train', ROOT='Your/Data/Path', resolution=(512,384), seed=1, num_views=8, gt_num_image=0, aug_portrait_or_landscape=False, sequential_input=False)" \
+    --test_dataset "1 @ CustomDataset(split='train', ROOT='Your/Data/Path', resolution=(512,384), seed=1, num_views=7, gt_num_image=0, aug_portrait_or_landscape=False, sequential_input=False)" \
     --model "AsymmetricMASt3R(pos_embed='RoPE100', patch_embed_cls='ManyAR_PatchEmbed', img_size=(512, 512), head_type='catmlp+dpt', output_mode='pts3d+desc24', depth_mode=('exp', -inf, inf), conf_mode=('exp', 1, inf), enc_embed_dim=1024, enc_depth=24, enc_num_heads=16, dec_embed_dim=768, dec_depth=12, dec_num_heads=12, two_confs=True, desc_conf_mode=('exp', 0, inf))" \
     --pretrained "Your/Checkpoint/Path" \
     --test_criterion "MeshOutput(sam=False)" --output_dir "log/" --amp 1 --seed 1 --num_workers 0
 ```
 
-## 👀 Visualization
+**To run the demo using ground truth camera poses:**
+Enable the wpose=True flag in both the CustomDataset and AsymmetricMASt3R. An example script demonstrating this setup is provided in run_pose_pointcloud_wpose.sh.
+
+```bash
+sh run_pose_pointcloud_wpose.sh
+```
+
+## 👀 Visualization 
 
 ```
 sh ./visualizer/vis.sh
 ```
  
-or 
 
 ```
 CUDA_VISIBLE_DEVICES=0 python visualizer/run_vis.py --result_npz data/mesh/IMG_1511.HEIC.JPG.JPG/pred.npz --results_folder data/mesh/IMG_1511.HEIC.JPG.JPG/
 ``` 
 
 
-
-## 📜 Citation
+## 📜 Citation 
 ```bibtex
-@misc{zhang2025flare,
-  title={FLARE: Feed-forward Geometry, Appearance and Camera Estimation from Uncalibrated Sparse Views},
-  author={Zhang, Shangzhan and Wang, Jianyuan and Xu, Yinghao and Xue, Nan and Rupprecht, Christian and Zhou, Xiaowei and Shen, Yujun and Wetzstein, Gordon},
-  year={2025},
-  eprint={},
-  archivePrefix={arXiv},
-  primaryClass={cs.CV}
+@misc{zhang2025flarefeedforwardgeometryappearance,
+      title={FLARE: Feed-forward Geometry, Appearance and Camera Estimation from Uncalibrated Sparse Views}, 
+      author={Shangzhan Zhang and Jianyuan Wang and Yinghao Xu and Nan Xue and Christian Rupprecht and Xiaowei Zhou and Yujun Shen and Gordon Wetzstein},
+      year={2025},
+      eprint={2502.12138},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2502.12138}, 
 }
