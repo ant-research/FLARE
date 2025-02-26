@@ -56,7 +56,7 @@ Download the checkpoint from [huggingface](https://huggingface.co/AntResearch/FL
 
 
 ```bash
-sh run_pose_pointcloud.sh
+sh scripts/run_pose_pointcloud.sh
 ```
 
 
@@ -72,7 +72,7 @@ torchrun --nproc_per_node=1 run_pose_pointcloud.py \
 Enable the wpose=True flag in both the CustomDataset and AsymmetricMASt3R. An example script demonstrating this setup is provided in run_pose_pointcloud_wpose.sh.
 
 ```bash
-sh run_pose_pointcloud_wpose.sh
+sh scripts/run_pose_pointcloud_wpose.sh
 ```
 
 ## 👀 Visualization 
