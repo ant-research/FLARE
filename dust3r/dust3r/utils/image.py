@@ -12,6 +12,7 @@ from PIL.ImageOps import exif_transpose
 import torchvision.transforms as tvf
 os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 import cv2  # noqa
+import dust3r.datasets.utils.cropping as cropping
 
 try:
     from pillow_heif import register_heif_opener  # noqa
@@ -111,6 +112,19 @@ def _resize_pil_image(img, long_edge_size):
     new_size = tuple(int(round(x*long_edge_size/S)) for x in img.size)
     return img.resize(new_size, interp)
 
+def crop_resize_if_necessary(image, resolution):
+    if not isinstance(image, PIL.Image.Image):
+        image = PIL.Image.fromarray(image)
+    W, H = image.size  # new size
+    depthmap = np.zeros((H, W), dtype=np.float32)
+    target_resolution = np.array(resolution)
+    intrinsics = np.array([[W, 0, W/2], [0, H, H/2], [0, 0, 1]])
+    image, depthmap, intrinsics = cropping.rescale_image_depthmap(image, depthmap, intrinsics, target_resolution)
+    offset_factor = 0.5
+    intrinsics2 = cropping.camera_matrix_of_crop(intrinsics, image.size, resolution, offset_factor=offset_factor)
+    crop_bbox = cropping.bbox_from_intrinsics_in_out(intrinsics, intrinsics2, resolution)
+    image, depthmap, intrinsics2 = cropping.crop_image_depthmap(image, depthmap, intrinsics, crop_bbox)
+    return image
 
 def load_images(folder_or_list, size, square_ok=False, verbose=True):
     """ open and convert all images in a list or folder to proper input format for DUSt3R
@@ -137,26 +151,10 @@ def load_images(folder_or_list, size, square_ok=False, verbose=True):
     for path in folder_content:
         if not path.lower().endswith(supported_images_extensions):
             continue
-        img = exif_transpose(PIL.Image.open(os.path.join(root, path))).convert('RGB')
-        W1, H1 = img.size
-        if size == 224:
-            # resize short side to 224 (then crop)
-            img = _resize_pil_image(img, round(size * max(W1/H1, H1/W1)))
-        else:
-            # resize long side to 512
-            img = _resize_pil_image(img, size)
-        W, H = img.size
-        cx, cy = W//2, H//2
-        if size == 224:
-            half = min(cx, cy)
-            img = img.crop((cx-half, cy-half, cx+half, cy+half))
-        else:
-            halfw, halfh = ((2*cx)//16)*8, ((2*cy)//16)*8
-            if not (square_ok) and W == H:
-                halfh = 3*halfw/4
-            img = img.crop((cx-halfw, cy-halfh, cx+halfw, cy+halfh))
-
-        W2, H2 = img.size
+        image = exif_transpose(PIL.Image.open(os.path.join(root, path))).convert('RGB')
+        resolution = [512, 384]
+        img = crop_resize_if_necessary(
+                image, resolution)
         if verbose:
             print(f' - adding {path} with resolution {W1}x{H1} --> {W2}x{H2}')
         imgs.append(dict(img=ImgNorm(img)[None], true_shape=np.int32(
