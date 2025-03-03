@@ -89,7 +89,7 @@ sh ./visualizer/vis.sh
 CUDA_VISIBLE_DEVICES=0 python visualizer/run_vis.py --result_npz data/mesh/IMG_1511.HEIC.JPG.JPG/pred.npz --results_folder data/mesh/IMG_1511.HEIC.JPG.JPG/
 ``` 
 
-## 🎥 Evaluating Novel View Synthesis
+## 📽️ Evaluating Novel View Synthesis
 
 You can evaluate the novel view synthesis on RealEstate10K dataset using the following command:
 
