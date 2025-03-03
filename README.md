@@ -32,8 +32,8 @@ Achieves SOTA performance with inference times <0.5 seconds!
 ## 🛠️ TODO List
 - [x] Release point cloud and camera pose estimation code.
 - [x] Updated Gradio demo (app.py).
-- [ ] Release novel view synthesis code. (~2 weeks)
-- [ ] Release evaluation code. (~2 weeks)
+- [x] Release novel view synthesis code.
+- [x] Release evaluation code.
 - [ ] Release training code.
 - [ ] Release data processing code.
 
