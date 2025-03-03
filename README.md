@@ -15,6 +15,7 @@ Official implementation of **FLARE** (arXiv 2025) - a feed-forward model for joi
 - [🌍 Installation](#-installation)
 - [💿 Checkpoints](#-checkpoints)
 - [🎯 Run a Demo (Point Cloud and Camera Pose Estimation) ](#-run-a-demo-point-cloud-and-camera-pose-estimation)
+- [📽️ Evaluating Novel View Synthesis](#-evaluating-novel-view-synthesis)
 - [👀 Visualization ](#-visualization)
 - [📜 Citation ](#-citation)
 
