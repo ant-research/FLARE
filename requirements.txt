@@ -27,3 +27,7 @@ pathlib
 nerfvis
 h5py
 joblib
+einops
+huggingface_hub
+decord
+lpips

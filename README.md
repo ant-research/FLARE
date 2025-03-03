@@ -75,6 +75,9 @@ Enable the wpose=True flag in both the CustomDataset and AsymmetricMASt3R. An ex
 sh scripts/run_pose_pointcloud_wpose.sh
 ```
 
+
+
+
 ## 👀 Visualization 
 
 ```
@@ -85,6 +88,15 @@ sh ./visualizer/vis.sh
 ```
 CUDA_VISIBLE_DEVICES=0 python visualizer/run_vis.py --result_npz data/mesh/IMG_1511.HEIC.JPG.JPG/pred.npz --results_folder data/mesh/IMG_1511.HEIC.JPG.JPG/
 ``` 
+
+## 🎥 Evaluating Novel View Synthesis
+
+You can evaluate the novel view synthesis on RealEstate10K dataset using the following command:
+
+```
+sh scripts/run_eval_nvs.sh
+```
+
 
 
 ## 📜 Citation 

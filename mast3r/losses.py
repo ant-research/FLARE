@@ -2,11 +2,249 @@ import torch
 import torch.nn as nn
 import numpy as np
 import mast3r.utils.path_to_dust3r  # noqa
-from dust3r.utils.geometry import normalize_pointcloud, xy_grid
+from dust3r.utils.geometry import normalize_pointcloud, xy_grid, inv, matrix_to_quaternion
 import os
 import torch.nn.functional as F
 import cv2
 from pytorch3d.ops import knn_points
+from dust3r.renderers.gaussian_renderer import GaussianRenderer
+from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Slerp
+import imageio
+from lpips import LPIPS
+from pytorch3d.transforms.rotation_conversions import matrix_to_quaternion, quaternion_to_matrix
+
+def transpose_to_landscape_render(head, activate=True):
+    """ Predict in the correct aspect-ratio,
+        then transpose the result in landscape 
+        and stack everything back together.
+    """
+    def wrapper_no(decout, true_shape):
+        B = len(true_shape)
+        assert true_shape[0:1].allclose(true_shape), 'true_shape must be all identical'
+        H, W = true_shape[0].cpu().tolist()
+        res = head(decout, (H, W))
+        return res
+
+    def wrapper_yes(decout, true_shape):
+        B = len(true_shape)
+        # by definition, the batch is in landscape mode so W >= H
+        H, W = int(true_shape.min()), int(true_shape.max())
+
+        height, width = true_shape.T
+        is_landscape = (width >= height)
+        is_portrait = ~is_landscape
+
+        # true_shape = true_shape.cpu()
+        if is_landscape.all():
+            return head(decout, (H, W))
+        if is_portrait.all():
+            return transposed(head(decout, (W, H)))
+        # batch is a mix of both portraint & landscape
+        def selout(ar):  
+            ret = []
+            for d in decout:
+                if type(d) == dict:
+                    ret.append(d)
+                else:
+                    ret.append(d[ar])
+            return ret
+        l_result = head(selout(is_landscape), (H, W))
+        p_result = transposed(head(selout(is_portrait), (W, H)))
+
+        # allocate full result
+        result = {}
+        for k in l_result | p_result:
+            x = l_result[k].new(B, *l_result[k].shape[1:])
+            x[is_landscape] = l_result[k]
+            x[is_portrait] = p_result[k]
+            result[k] = x
+
+        return result
+
+    return wrapper_yes if activate else wrapper_no
+
+def convert_to_buffer(module: nn.Module, persistent: bool = True):
+    # Recurse over child modules.
+    for name, child in list(module.named_children()):
+        convert_to_buffer(child, persistent)
+
+    # Also re-save buffers to change persistence.
+    for name, parameter_or_buffer in (
+        *module.named_parameters(recurse=False),
+        *module.named_buffers(recurse=False),
+    ):
+        value = parameter_or_buffer.detach().clone()
+        delattr(module, name)
+        module.register_buffer(name, value, persistent=persistent)
+
+
+def rotation_6d_to_matrix(d6):
+    """
+    Converts 6D rotation representation by Zhou et al. [1] to rotation matrix
+    using Gram--Schmidt orthogonalization per Section B of [1]. Adapted from pytorch3d.
+    Args:
+        d6: 6D rotation representation, of size (*, 6)
+
+    Returns:
+        batch of rotation matrices of size (*, 3, 3)
+
+    [1] Zhou, Y., Barnes, C., Lu, J., Yang, J., & Li, H.
+    On the Continuity of Rotation Representations in Neural Networks.
+    IEEE Conference on Computer Vision and Pattern Recognition, 2019.
+    Retrieved from http://arxiv.org/abs/1812.07035
+    """
+
+    a1, a2 = d6[..., :3], d6[..., 3:]
+    b1 = F.normalize(a1, dim=-1)
+    b2 = a2 - (b1 * a2).sum(-1, keepdim=True) * b1
+    b2 = F.normalize(b2, dim=-1)
+    b3 = torch.cross(b1, b2, dim=-1)
+    return torch.stack((b1, b2, b3), dim=-2)
+
+
+class Eval_NVS(nn.Module):
+    """ Ensure that all 3D points are correct.
+        Asymmetric loss: view1 is supposed to be the anchor.
+
+        P1 = RT1 @ D1
+        P2 = RT2 @ D2
+        loss1 = (I @ pred_D1) - (RT1^-1 @ RT1 @ D1)
+        loss2 = (RT21 @ pred_D2) - (RT1^-1 @ P2)
+              = (RT21 @ pred_D2) - (RT1^-1 @ RT2 @ D2)
+    """
+    def __init__(self, alpha, scaling_mode='interp_5e-4_0.1_3'):
+        super().__init__()
+        self.scaling_mode = {'type':scaling_mode.split('_')[0], 'min_scaling': eval(scaling_mode.split('_')[1]), 'max_scaling': eval(scaling_mode.split('_')[2]), 'shift': eval(scaling_mode.split('_')[3])}
+        self.render_landscape = transpose_to_landscape_render(self.render)
+        self.alpha = alpha
+        self.lpips = LPIPS(net="vgg")
+        convert_to_buffer(self.lpips, persistent=False)
+        self.lpips = self.lpips.cuda()
+
+    def render(self, render_params, image_size):
+        latent, output_fxfycxcy, output_c2ws = render_params
+        (H_org, W_org) = image_size
+        H = H_org
+        W = W_org
+        new_latent = {}
+        if self.scaling_mode['type'] == 'precomp': 
+            scaling_factor = latent['scaling_factor']
+            x = torch.clip(latent['pre_scaling'] - self.scaling_mode['shift'], max=np.log(0.3))
+            new_latent['scaling'] = torch.exp(x).clamp(min= self.scaling_mode['min_scaling'], max=self.scaling_mode['max_scaling']) / scaling_factor
+            skip = ['pre_scaling', 'scaling', 'scaling_factor']
+        else:
+            skip = ['pre_scaling', 'scaling_factor']
+        for key in latent.keys():
+            if key not in skip:
+                new_latent[key] = latent[key]
+        gs_render = GaussianRenderer(H_org, W_org, gs_kwargs={'type':self.scaling_mode['type'], 'min_scaling': self.scaling_mode['min_scaling'], 'max_scaling': self.scaling_mode['max_scaling'], 'scaling_factor': scaling_factor})
+        results = gs_render(new_latent, output_fxfycxcy.reshape(1,-1,4), output_c2ws.reshape(1,-1,4,4))
+        images = results['image']
+        image_mask = results['alpha']
+        depth = results['depth']
+        depth = depth.reshape(-1,1,H,W).permute(0,2,3,1)
+        image_mask = image_mask.reshape(-1,1,H,W).permute(0,2,3,1)
+        images = images.reshape(-1,3,H,W).permute(0,2,3,1)
+        return {'images': images, 'image_mask': image_mask, 'depth':depth}
+    
+    def get_all_pts3d(self, name, gt1, gt2, pred1, pred2, trajectory_pred, dist_clip=None, render_gt=None):
+        from mast3r.metrics import compute_pose_error, compute_lpips, compute_psnr, compute_ssim
+        pr_pts1 = pred1['pts3d']
+        pr_pts2 = pred2['pts3d']
+        # GT pts3d
+        B, H, W, _ = pr_pts1.shape
+        # camera trajectory
+        Rs = []
+        Ts = []
+        # valid mask
+        sh_dim = pred1['feature'].shape[-1]
+        feature1 = pred1['feature'].reshape(B,H,W,sh_dim)
+        feature2 = pred2['feature'].reshape(B,-1,W,sh_dim)
+        feature = torch.cat((feature1, feature2), dim=1).float()
+        opacity1 = pred1['opacity'].reshape(B,H,W,1)
+        opacity2 = pred2['opacity'].reshape(B,-1,W,1)
+        opacity = torch.cat((opacity1, opacity2), dim=1).float()
+        scaling1 = pred1['scaling'].reshape(B,H,W,3)
+        scaling2 = pred2['scaling'].reshape(B,-1,W,3)
+        scaling = torch.cat((scaling1, scaling2), dim=1).float()
+        rotation1 = pred1['rotation'].reshape(B,H,W,4)
+        rotation2 = pred2['rotation'].reshape(B,-1,W,4)
+        rotation = torch.cat((rotation1, rotation2), dim=1).float()
+        output_fxfycxcy = torch.stack([gt['fxfycxcy'] for gt in render_gt], dim=1)
+        shape = torch.stack([gt['true_shape'] for gt in render_gt], dim=1)
+        xyz = torch.cat((pr_pts1, pr_pts2), dim=1)
+        images_gt = torch.stack([gt['img_org'] for gt in render_gt], dim=1)
+        images_gt = images_gt / 2 + 0.5
+        norm_factor_gt = 1
+        output_c2ws = torch.stack([gt['camera_pose'] for gt in render_gt], dim=1)
+        camera_pose = torch.stack([gt1_['camera_pose'] for gt1_ in gt1], dim=1)
+        in_camera1 = inv(camera_pose)
+        output_c2ws = torch.einsum('bnjk,bnkl->bnjl', in_camera1.repeat(1,output_c2ws.shape[1],1,1), output_c2ws)
+        output_c2ws[..., :3, 3:] = output_c2ws[..., :3, 3:]
+        with torch.set_grad_enabled(True):
+            B = output_c2ws.shape[0]
+            v = output_c2ws.shape[1]
+            cam_rot_delta = nn.Parameter(torch.zeros([B, v, 6], requires_grad=True, device=output_c2ws.device))
+            cam_trans_delta = nn.Parameter(torch.zeros([B, v, 3], requires_grad=True, device=output_c2ws.device))
+            opt_params = []
+            self.register_buffer("identity", torch.tensor([1.0, 0.0, 0.0, 0.0, 1.0, 0.0]).to(output_c2ws))
+            opt_params.append(
+                {
+                    "params": [cam_rot_delta],
+                    "lr": 0.005,
+                }
+            )
+            opt_params.append(
+                {
+                    "params": [cam_trans_delta],
+                    "lr": 0.005,
+                }
+            )
+            pose_optimizer = torch.optim.Adam(opt_params)
+            i = 0
+            latent = {'xyz': xyz.reshape(B, -1, 3), 'feature': feature.reshape(B, -1, sh_dim), 'opacity': opacity.reshape(B, -1, 1), 'pre_scaling': scaling.reshape(B, -1, 3).clone(), 'rotation': rotation.reshape(B, -1, 4), 'scaling_factor': 1}
+            extrinsics = output_c2ws
+            output_c2ws_org = output_c2ws.clone()
+            for i in range(100):
+                pose_optimizer.zero_grad()
+                dx, drot = cam_trans_delta, cam_rot_delta
+                rot = rotation_6d_to_matrix(
+                    drot + self.identity.expand(B, v, -1)
+                )  # (..., 3, 3)
+                transform = torch.eye(4, device=extrinsics.device).repeat((B, v, 1, 1))
+                transform[..., :3, :3] = rot
+                transform[..., :3, 3] = dx
+                new_extrinsics = torch.matmul(extrinsics, transform)
+                ret = self.render_landscape([latent, output_fxfycxcy[:1].reshape(-1,4), new_extrinsics.reshape(-1,4,4)], shape[:1].reshape(-1,2))
+                color = ret['images']
+                color = color.permute(0,3,1,2)
+                loss_vgg = self.lpips.forward(
+                    color,
+                    images_gt[0],
+                    normalize=True,
+                )
+                total_loss = loss_vgg.mean() * 0.1 + ((color - images_gt[0])**2).mean()
+                total_loss.backward()
+                pose_optimizer.step()
+            i = 0
+            ret = self.render_landscape([latent, output_fxfycxcy.reshape(-1,4), new_extrinsics.reshape(-1,4,4)], shape.reshape(-1,2))
+            images = ret['images']
+        all_metrics = {}
+        images_gt = images_gt[0]
+        images = images.permute(0,3,1,2)
+        lpips_metric = compute_lpips(images_gt, images).mean()
+        ssim_metric = compute_ssim(images_gt, images).mean()
+        psnr_metric = compute_psnr(images_gt, images).mean()
+        return psnr_metric, ssim_metric, lpips_metric, images
+
+    def __call__(self, gt1, gt2, pred1, pred2, trajectory_pred, render_gt=None, **kw):
+        name = gt1[0]['label'][0]
+        psnr_metric, ssim_metric, lpips_metric, images = self.get_all_pts3d(name, gt1, gt2, pred1, pred2, trajectory_pred, render_gt=render_gt, **kw)
+        loss_image_unsupervised = loss_2d_unsupervised = 0
+        details = {"psnr": psnr_metric, "ssim": ssim_metric, "lpips": lpips_metric, 'images': images}
+        return lpips_metric, details
+
 
 
 class MeshOutput():
