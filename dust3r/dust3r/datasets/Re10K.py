@@ -207,7 +207,7 @@ class Re10K(BaseStereoViewDataset_test):
                 if current_scene in self.test_path.keys() and chunk_gt is not None and chunk_gt['overlap_tag'] != 'large':
                     self.available_scenes.append(current_scene)
             else:
-                if current_scene in self.test_path.keys() and chunk_gt is not None and get_overlap_tag(chunk_gt['overlap']) != 'large':
+                if current_scene in self.test_path.keys() and chunk_gt is not None:
                     # chunk_gt['overlap_tag'] = get_overlap_tag(chunk_gt['overlap'])
                     self.available_scenes.append(current_scene)
 
@@ -250,8 +250,12 @@ class Re10K(BaseStereoViewDataset_test):
             overlap = chunk_gt['overlap_tag']
             psnr = chunk_gt['psnr']
         else:
-            overlap = chunk_gt['overlap']
-            psnr = 0
+            if 'overlap' in chunk_gt:
+                overlap = chunk_gt['overlap']
+                psnr = 0
+            else:
+                overlap = 0
+                psnr = 0
         
         poses_right = chunk["cameras"][index_list[0]]
         w2c_right = np.eye(4)

@@ -51,7 +51,7 @@ conda install -c conda-forge ffmpeg
 
 
 ## 💿 Checkpoints
-Download the checkpoint from [huggingface](https://huggingface.co/AntResearch/FLARE/blob/main/geometry_pose.pth) and place it in the checkpoints/geometry_pose.pth and checkpoints/NVS.pth directory.
+Download the checkpoint from [huggingface_geometry](https://huggingface.co/AntResearch/FLARE/blob/main/geometry_pose.pth) [huggingface_nvs](https://huggingface.co/zhang3z/FLARE_NVS/blob/main/NVS.pth) and place it in the checkpoints/geometry_pose.pth and checkpoints/NVS.pth directory.
 
 ## 🎯 Run a Demo (Point Cloud and Camera Pose Estimation) 
 
