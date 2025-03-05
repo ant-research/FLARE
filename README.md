@@ -124,4 +124,4 @@ Our model uses the same training and test datasets as pixelSplat. Below we quote
 
 Give it a star 🌟 if you find this project useful.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Manchery/awesome-visual-tokenizer&type=Date)](https://star-history.com/#Manchery/awesome-visual-tokenizer&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=ant-research/FLARE&type=Date)](https://star-history.com/#ant-research/FLARE&Date)
