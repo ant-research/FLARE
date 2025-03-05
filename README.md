@@ -118,3 +118,10 @@ Our model uses the same training and test datasets as pixelSplat. Below we quote
       primaryClass={cs.CV},
       url={https://arxiv.org/abs/2502.12138}, 
 }
+
+
+## Star History
+
+Give it a star 🌟 if you find this project useful.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Manchery/awesome-visual-tokenizer&type=Date)](https://star-history.com/#Manchery/awesome-visual-tokenizer&Date)
