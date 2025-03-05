@@ -112,7 +112,7 @@ def main(args):
     if args.pretrained:
         print('Loading pretrained: ', args.pretrained)
         ckpt = torch.load(args.pretrained, map_location=device)
-        print(model.load_state_dict(ckpt['model'], strict=False))
+        print(model.load_state_dict(ckpt, strict=False))
         del ckpt  # in case it occupies memory
 
     for test_name, testset in data_loader_test.items():
