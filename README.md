@@ -118,7 +118,7 @@ Our model uses the same training and test datasets as pixelSplat. Below we quote
       primaryClass={cs.CV},
       url={https://arxiv.org/abs/2502.12138}, 
 }
-
+```
 
 ## Star History
 
