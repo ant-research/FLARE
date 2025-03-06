@@ -120,8 +120,3 @@ Our model uses the same training and test datasets as pixelSplat. Below we quote
 }
 ```
 
-## Star History
-
-Give it a star 🌟 if you find this project useful.
-
-[![Star History Chart](https://api.star-history.com/svg?repos=ant-research/FLARE&type=Date)](https://star-history.com/#ant-research/FLARE&Date)
