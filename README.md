@@ -119,4 +119,13 @@ Our model uses the same training and test datasets as pixelSplat. Below we quote
       url={https://arxiv.org/abs/2502.12138}, 
 }
 ```
+## 🙏 Acknowledgement
+FLARE is constructed on the outstanding open-source projects. We are extremely grateful for the contributions of these projects and their communities, whose hard work has greatly propelled the development of the field and enabled our work to be realized.
+
+- [DUSt3R](https://dust3r.europe.naverlabs.com/)
+- [VGGSfM](https://github.com/facebookresearch/vggsfm)
+- [MASt3R](https://github.com/naver/mast3r)
+  
+
+
 
