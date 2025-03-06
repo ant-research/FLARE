@@ -125,7 +125,7 @@ FLARE is constructed on the outstanding open-source projects. We are extremely g
 - [DUSt3R](https://dust3r.europe.naverlabs.com/)
 - [VGGSfM](https://github.com/facebookresearch/vggsfm)
 - [MASt3R](https://github.com/naver/mast3r)
-  
+- [gsplat](https://github.com/nerfstudio-project/gsplat)
 
 
 
