@@ -1,6 +1,6 @@
 # FLARE: Feed-forward Geometry, Appearance and Camera Estimation from Uncalibrated Sparse Views
 [![Website](https://img.shields.io/website-up-down-green-red/http/shields.io.svg)](https://zhanghe3z.github.io/FLARE/)
-[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97-Hugging%20Face-yellow)](https://huggingface.co/AntResearch/FLARE)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97-Hugging%20Face-yellow)](https://huggingface.co/spaces/zhang3z/FLARE)
 [![Video](https://img.shields.io/badge/Video-Demo-red)](https://zhanghe3z.github.io/FLARE/videos/teaser_video.mp4)
 
 Official implementation of **FLARE** (CVPR 2025) - a feed-forward model for joint camera pose estimation, 3D reconstruction and novel view synthesis from sparse uncalibrated views.
