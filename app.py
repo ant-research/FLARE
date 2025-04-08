@@ -32,8 +32,9 @@ weights_path = "checkpoints/geometry_pose.pth"
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 ckpt = torch.load(weights_path, map_location=device)
 model = AsymmetricMASt3R(pos_embed='RoPE100', patch_embed_cls='ManyAR_PatchEmbed', img_size=(512, 512), head_type='catmlp+dpt', output_mode='pts3d+desc24', depth_mode=('exp', -inf, inf), conf_mode=('exp', 1, inf), enc_embed_dim=1024, enc_depth=24, enc_num_heads=16, dec_embed_dim=768, dec_depth=12, dec_num_heads=12, two_confs=True, desc_conf_mode=('exp', 0, inf))
-model.load_state_dict(ckpt['model'], strict=False)
+model = AsymmetricMASt3R.from_pretrained("zhang3z/FLARE").to(device)
 model = model.to(device).eval()
+
 model = AsymmetricMASt3R.from_pretrained(weights_path).to(device)
 tmpdirname = tempfile.mkdtemp(suffix='_FLARE_gradio_demo')
 image_size = 512
