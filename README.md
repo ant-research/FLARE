@@ -35,7 +35,7 @@ Achieves SOTA performance with inference times <0.5 seconds!
 - [x] Updated Gradio demo (app.py).
 - [x] Release novel view synthesis code.
 - [x] Release evaluation code.
-- [ ] Release training code.
+- [x] Release training code.
 - [ ] Release data processing code.
 
 ## 🌍 Installation
@@ -105,6 +105,15 @@ Our model uses the same training and test datasets as pixelSplat. Below we quote
 > pixelSplat was trained using versions of the RealEstate10k and ACID datasets that were split into ~100 MB chunks for use on server cluster file systems. Small subsets of the Real Estate 10k and ACID datasets in this format can be found [here](https://drive.google.com/drive/folders/1joiezNCyQK2BvWMnfwHJpm2V77c7iYGe?usp=sharing). To use them, simply unzip them into a newly created `datasets` folder in the project root directory.
 
 > If you would like to convert downloaded versions of the Real Estate 10k and ACID datasets to our format, you can use the [scripts here](https://github.com/dcharatan/real_estate_10k_tools). Reach out to us (pixelSplat) if you want the full versions of our processed datasets, which are about 500 GB and 160 GB for Real Estate 10k and ACID respectively.
+
+## 📈 Training
+You can train the model on the CO3D dataset using the following command:
+
+```bash
+sh scripts/train.sh
+```
+For more training configurations, please refer to [DUSt3R](https://github.com/cvg/DUSt3R).  
+We gratefully acknowledge the authors for their excellent implementation.
 
 
 ## 📜 Citation 

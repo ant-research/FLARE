@@ -13,6 +13,8 @@ from scipy.spatial.transform import Slerp
 import imageio
 from lpips import LPIPS
 from pytorch3d.transforms.rotation_conversions import matrix_to_quaternion, quaternion_to_matrix
+import roma
+
 
 def transpose_to_landscape_render(head, activate=True):
     """ Predict in the correct aspect-ratio,

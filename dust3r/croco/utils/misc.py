@@ -573,7 +573,6 @@ def adjust_learning_rate(optimizer, epoch, args):
         T_cur_adjusted = T_cur - warmup_iters
         T_i = T_0 - warmup_iters
         lr = args.min_lr + (lr_peak - args.min_lr) * (1 + math.cos(math.pi * T_cur_adjusted / T_i)) / 2
-        # 1e-5 + (1e-4-1e-5) * (1+math.cos(math.pi * (10-2) / 98)) / 2
     for param_group in optimizer.param_groups:
         if "lr_scale" in param_group:
             param_group["lr"] = lr * param_group["lr_scale"]

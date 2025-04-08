@@ -29,13 +29,13 @@ import torch.distributed as dist
 from dust3r.model import AsymmetricCroCo3DStereo, inf  # noqa: F401, needed when loading the model
 from dust3r.datasets import get_data_loader  # noqa
 from dust3r.losses import *  # noqa: F401, needed when loading the model
+from mast3r.losses import test_render_eval_2v
 from dust3r.inference import loss_of_one_batch  # noqa
 import matplotlib.pyplot as plt
 import matplotlib
 import dust3r.utils.path_to_croco  # noqa: F401
 import croco.utils.misc as misc  # noqa
 from croco.utils.misc import NativeScalerWithGradNormCount as NativeScaler  # noqa
-# import torch.profiler
 
 
 
@@ -192,6 +192,10 @@ def train(args):
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
+    # auto resume
+    if int(os.environ['LOCAL_RANK']) == 0:
+        os.system('mkdir -p %s' % args.output_dir)
+        os.system('ossutil64 cp oss://antsys-vilab/zsz/checkpoints/%s/checkpoint-last.pth %s/checkpoint-last.pth' % (args.output_dir, args.output_dir))
     dist.barrier()
     last_ckpt_fname = os.path.join(args.output_dir, f'checkpoint-last.pth')
     args.resume = last_ckpt_fname if os.path.isfile(last_ckpt_fname) else None
@@ -441,31 +445,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             else:
                 depths = None
             texts = [batch_each['label'] for batch_each in batch]
-            # import ipdb; ipdb.set_trace()
-            # log_writer.add_mesh(f'{prefix}', vertices=pts.reshape(B,-1,3)[:,::4], colors=pc_colors.clone().reshape(B,-1,3)[:,::4].to(dtype=torch.int))
             flag = True
         else:
             flag = False
-        # 检查当前进程的损失是否为有限值
         is_finite = torch.isfinite(torch.tensor(loss_value, device=device)).float()
-        # 收集所有进程的 is_finite 状态
         world_size = dist.get_world_size()
         is_finite_list = [torch.ones(1, device=device) for _ in range(world_size)]
         dist.all_gather(is_finite_list, is_finite)
-        # 检查所有进程的 is_finite 状态
-        # print(is_finite_list)
-        # all_is_finite = all([bool(t.item()) for t in is_finite_list])
-        # if not all_is_finite:
-        #     print(f"Rank {dist.get_rank()} encountered NaN loss, skipping this batch")
-        #     print("Loss is {}, stopping training".format(loss_value), force=True)
-        #     print(loss_details, force=True)
-        #     print(f"WARNING: found a loss with NaN loss, try to deal with it but might fail. Loss is {loss}")
-        #     # torch.nan_to_num_(loss, 0.)
-        #     loss.data = torch.zeros_like(loss).to(loss)
-        # optimizer.zero_grad()
-        # del loss, batch, loss_details
-        # torch.cuda.empty_cache()
-        # continue  # 跳过当前batch
+
 
         loss /= accum_iter
 
