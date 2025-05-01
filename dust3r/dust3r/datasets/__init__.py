@@ -5,7 +5,9 @@ from .base.batched_sampler import BatchedRandomSampler  # noqa
 from .CustomDataset import CustomDataset  # noqa
 from .Re10K import Re10K
 from .Co3d import Co3d
-
+from .Re10K_pose import Re10K_pose
+from .ETH3D import ETH3D
+from .dtu import DTU
 def get_data_loader(dataset, batch_size, num_workers=8, shuffle=True, drop_last=True, pin_mem=True):
     import torch
     from croco.utils.misc import get_world_size, get_rank

@@ -1,0 +1,6 @@
+torch
+numpy
+tqdm
+open3d
+scipy
+plyfile

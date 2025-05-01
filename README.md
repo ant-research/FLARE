@@ -117,6 +117,25 @@ For more training configurations, please refer to [DUSt3R](https://github.com/cv
 We gratefully acknowledge the authors for their excellent implementation.
 
 
+## 🧭 Evaluation
+You can evaluate pose estimation on the RealEstate10K dataset using the following command:
+```bash
+sh scripts/test_re10k.sh
+```
+
+DTU dataset can be evaluated using the following command:
+```bash
+sh scripts/test_dtu.sh
+```
+
+
+ETH3D dataset can be evaluated using the following command:
+```bash
+sh scripts/test_dtu.sh
+```
+
+
+
 ## 📜 Citation 
 ```bibtex
 @misc{zhang2025flarefeedforwardgeometryappearance,
